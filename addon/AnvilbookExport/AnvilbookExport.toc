@@ -1,0 +1,7 @@
+## Interface: 16001
+## Title: Anvilbook Export
+## Notes: Records known trade skill recipes for the anvilbook app.
+## Version: 1.0
+## SavedVariables: AnvilbookExportDB
+
+AnvilbookExport.lua
