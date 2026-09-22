@@ -1,5 +1,5 @@
 -- Bumped when a fix makes older saved data wrong; it is then thrown away.
-local VERSION = 3
+local VERSION = 4
 
 local frame = CreateFrame("Frame")
 local busy = false
@@ -64,21 +64,27 @@ local function modernRecipes(db)
   if not profession then
     return nil
   end
-  local ids = api.GetAllRecipeIDs and api.GetAllRecipeIDs() or {}
+  local all = api.GetAllRecipeIDs and api.GetAllRecipeIDs() or {}
   local categories, categoryCount = categorySet(api)
-  local debug = {api = "modern", recipeCount = #ids, professionInfo = info, categories = categoryCount}
+  local filtered = api.GetFilteredRecipeIDs and select(2, pcall(api.GetFilteredRecipeIDs)) or nil
+  filtered = type(filtered) == "table" and #filtered > 0 and filtered or nil
+  local debug = {api = "modern", recipeCount = #all, professionInfo = info, categories = categoryCount,
+                 filteredCount = filtered and #filtered}
   db.debug = debug
-  -- Without categories the recipes of every profession look alike, and a retry
-  -- after the window closed would file them all under the wrong profession.
-  if not categories then
-    debug.skipped = "no categories"
+
+  -- GetAllRecipeIDs returns every profession's recipes, so the open profession has to be
+  -- told apart by the window's own list, or by its categories.
+  local ids = filtered or all
+  debug.source = filtered and "filtered" or "categories"
+  if not filtered and not categories then
+    debug.skipped = "cannot tell which recipes belong to this profession"
     return nil
   end
   local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
   local recipes, recorded = {}, 0
   for _, recipeID in ipairs(ids) do
     local recipe = api.GetRecipeInfo(recipeID)
-    local mine = recipe and recipe.categoryID and categories[recipe.categoryID]
+    local mine = recipe and (filtered or (recipe.categoryID and categories[recipe.categoryID]))
     local schematic = mine and recipe.learned and api.GetRecipeSchematic(recipeID, false)
     local outputId = schematic and schematic.outputItemID
     if outputId and outputId ~= 0 then

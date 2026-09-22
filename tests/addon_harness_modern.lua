@@ -35,9 +35,12 @@ C_TradeSkillUI = {
             relativeDifficulty = difficulty[id], categoryID = category[id]}
   end,
   GetRecipeSchematic = function(id) return schematics[id] end,
-  GetCategories = function() return {10} end,
+  GetCategories = function() return state.categories end,
   GetSubCategories = function(id) return id == 10 and {11} or {} end,
+  GetFilteredRecipeIDs = function() return state.filtered end,
 }
+state.categories = {10}
+state.filtered = nil
 function C_Item_GetItemNameByID(id) return "Item " .. id end
 C_Item = {GetItemNameByID = C_Item_GetItemNameByID}
 
@@ -95,14 +98,22 @@ assert(bs.recipes[123456] == nil, "a verified list replaces old recipes")
 assert(bs.recipes[3490], "current recipes stay")
 
 -- A retry after the window closed cannot tell professions apart, so it must record nothing.
-local categories = C_TradeSkillUI.GetCategories
-C_TradeSkillUI.GetCategories = function() return {} end
+state.categories = {}
 state.profession = {professionName = "First Aid", skillLevel = 1, maxSkillLevel = 75}
 handler(frame, "TRADE_SKILL_LIST_UPDATE")
-assert(char.professions["First Aid"] == nil, "nothing recorded without categories")
+assert(char.professions["First Aid"] == nil, "nothing recorded without categories or a filtered list")
 assert(AnvilbookExportDB.lastError == nil, "and it is not an error")
-C_TradeSkillUI.GetCategories = categories
+
+-- This client returns nothing from GetCategories, so the window's own list is used.
+state.filtered = {111, 222, 333, 444}
 state.profession = {professionName = "Blacksmithing", skillLevel = 147, maxSkillLevel = 150}
+handler(frame, "TRADE_SKILL_LIST_UPDATE")
+local bs2 = char.professions["Blacksmithing"]
+assert(bs2.recipes[3490] and bs2.recipes[2841], "recorded from the filtered list")
+assert(bs2.recipes[279981] == nil, "the other profession's recipe is not in the filtered list")
+assert(AnvilbookExportDB.debug.source == "filtered", "source recorded, got " .. tostring(AnvilbookExportDB.debug.source))
+assert(AnvilbookExportDB.debug.filteredCount == 4, "filtered count recorded")
+state.categories = {10}
 
 state.profession = nil
 handler(frame, "TRADE_SKILL_LIST_UPDATE")
