@@ -45,6 +45,7 @@ class CraftRow:
     cheapest_profit: float
     cheapest_casts: float
     cheapest_path: str
+    difficulty: str | None = None
 
 
 def pareto(opts: list[Option]) -> list[Option]:
@@ -65,6 +66,8 @@ class Calculator:
         self._memo: dict[tuple[int, int], list[Option]] = {}
 
     def skill(self, item_id: int, recipe: dict) -> int:
+        if recipe.get('known'):
+            return 0
         return self.s.skill_overrides.get(item_id, recipe.get('requiredSkill') or 0)
 
     def can_craft(self, item_id: int, recipe: dict) -> bool:
@@ -128,6 +131,7 @@ class Calculator:
                 out.append(CraftRow(
                     item_id, item['name'], recipe.get('category'), self.skill(item_id, recipe),
                     cost, revenue, revenue - cost, casts, per_cast, per_cast * 3600 / self.s.cast_seconds,
-                    price['available'], path, revenue - cheap_cost, cheap_casts, cheap_path))
+                    price['available'], path, revenue - cheap_cost, cheap_casts, cheap_path,
+                    recipe.get('difficulty')))
         out.sort(key=lambda r: -r.per_hour)
         return out

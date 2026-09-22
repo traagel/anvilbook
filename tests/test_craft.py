@@ -76,6 +76,16 @@ def test_vendor_price_beats_ah():
     assert Calculator(ITEMS, PRICES, {2771: 120}, settings()).options(2771) == [(120, 0, 'buy')]
 
 
+def test_known_game_recipe_ignores_overrides_and_keeps_difficulty():
+    game = {**recipe('Mining', 0, [(2840, 1), (3576, 1)], amount=(2, 2)), 'known': True, 'difficulty': 'easy'}
+    items = {**ITEMS, 2841: {'name': 'Bronze Bar', 'createdBy': [game]}}
+    r = row(Calculator(items, PRICES, {}, settings(skill_overrides={2841: 500})).rows(), 2841)
+    assert r is not None
+    assert (r.skill, r.difficulty) == (0, 'easy')
+    db = row(Calculator(ITEMS, PRICES, {}, settings()).rows(), 2841)
+    assert db is not None and db.difficulty is None
+
+
 def test_self_referencing_recipe_terminates():
     items = {1: {'name': 'Loop', 'createdBy': [recipe('Mining', 1, [(1, 1)])]}}
     prices = {1: {'min_price': 100, 'available': 10}}
