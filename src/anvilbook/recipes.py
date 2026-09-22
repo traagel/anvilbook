@@ -18,18 +18,27 @@ def _array(t) -> list:
     return [t[k] for k in sorted(t)] if isinstance(t, dict) else []
 
 
-def load_export(path: Path) -> GameExport | None:
+def load_exports(path: Path) -> list[GameExport]:
+    """Every character in the file, most recently updated first."""
     try:
         text = path.read_bytes()
     except FileNotFoundError:
-        return None
+        return []
     db = parse_savedvariables(text).get('AnvilbookExportDB')
     chars = db.get('characters') if isinstance(db, dict) else None
-    if not chars:
-        return None
-    name, char = max(chars.items(), key=lambda kv: kv[1].get('updated') or 0)
-    professions = {ALIASES.get(str(p), str(p)): data for p, data in (char.get('professions') or {}).items()}
-    return GameExport(name, int(char.get('updated') or 0), professions)
+    out = []
+    for name, char in (chars or {}).items():
+        professions = {ALIASES.get(str(p), str(p)): data for p, data in (char.get('professions') or {}).items()}
+        out.append(GameExport(str(name), int(char.get('updated') or 0), professions))
+    return sorted(out, key=lambda e: -e.updated)
+
+
+def load_export(path: Path, character: str | None = None) -> GameExport | None:
+    exports = load_exports(path)
+    for export in exports:
+        if export.character == character:
+            return export
+    return exports[0] if exports else None
 
 
 def export_skills(export: GameExport) -> dict[str, int]:

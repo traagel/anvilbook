@@ -14,6 +14,7 @@ WOW_SAVEDVARIABLES = (
 DEFAULT_SETTINGS = {
     'savedvariables_path': str(WOW_SAVEDVARIABLES),
     'export_path': str(WOW_SAVEDVARIABLES.with_name('AnvilbookExport.lua')),
+    'character': None,
     'realm': None,
     'skills': {'Blacksmithing': 120, 'Mining': 99},
     'skill_overrides': {'3490': 100},

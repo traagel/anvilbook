@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from .craft import Calculator, CraftSettings
 from .items import load_items
 from .luatable import LuaParseError
-from .recipes import GameExport, export_skills, load_export, merge
+from .recipes import GameExport, export_skills, load_export, load_exports, merge
 from .store import Store
 from .watcher import Importer
 
@@ -34,9 +34,10 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         return cache['items']
 
     def game_export() -> GameExport | None:
-        path = Path(store.settings()['export_path']).expanduser()
+        settings = store.settings()
+        path = Path(settings['export_path']).expanduser()
         try:
-            return load_export(path)
+            return load_export(path, settings['character'])
         except LuaParseError as e:
             log.warning('recipe export unreadable: %s', e)
             return None
@@ -76,6 +77,16 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
     @app.get('/api/scans')
     def scans():
         return store.scans()
+
+    @app.get('/api/characters')
+    def characters():
+        path = Path(store.settings()['export_path']).expanduser()
+        try:
+            found = load_exports(path)
+        except LuaParseError as e:
+            log.warning('recipe export unreadable: %s', e)
+            return []
+        return [{'character': e.character, 'updated': e.updated, 'professions': export_skills(e)} for e in found]
 
     @app.get('/api/crafts')
     def crafts():

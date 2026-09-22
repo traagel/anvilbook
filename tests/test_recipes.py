@@ -1,6 +1,6 @@
 import copy
 
-from anvilbook.recipes import export_skills, load_export, merge
+from anvilbook.recipes import export_skills, load_export, load_exports, merge
 
 EXPORT = b'''
 AnvilbookExportDB = {
@@ -90,6 +90,21 @@ def test_load_export_picks_latest_character_and_maps_smelting(tmp_path):
     assert (exp.character, exp.updated) == ('Thordak - Classic Beta PvP', 200)
     assert set(exp.professions) == {'Blacksmithing', 'Mining'}
     assert export_skills(exp) == {'Blacksmithing': 147, 'Mining': 99}
+
+
+def test_load_exports_lists_characters_newest_first(tmp_path):
+    path = tmp_path / 'AnvilbookExport.lua'
+    path.write_bytes(EXPORT)
+    assert [e.character for e in load_exports(path)] == ['Thordak - Classic Beta PvP', 'Old - Realm']
+
+
+def test_load_export_picks_a_named_character(tmp_path):
+    path = tmp_path / 'AnvilbookExport.lua'
+    path.write_bytes(EXPORT)
+    old = load_export(path, 'Old - Realm')
+    assert old is not None and export_skills(old) == {'Blacksmithing': 50}
+    unknown = load_export(path, 'Nobody')
+    assert unknown is not None and unknown.character == 'Thordak - Classic Beta PvP'
 
 
 def test_load_export_without_data(tmp_path):

@@ -50,6 +50,7 @@ input[type=text] { width:100%; max-width:40rem; }
     <button data-tab="sellthrough">Sell-through</button>
     <button data-tab="settings">Settings</button>
   </nav>
+  <select id="character" title="Whose recipes to use. Prices and history are shared."></select>
   <button id="import">Import now</button>
   <span id="status"></span>
 </header>
@@ -234,6 +235,7 @@ async function loadSettings() {
   };
   field('savedvariables_path', 'SavedVariables file', 'text');
   field('export_path', 'AnvilbookExport file (recipes from the game)', 'text');
+  field('character', 'Character (empty = the one that updated last)', 'text');
   field('realm', 'Realm (empty = first realm in the file)', 'text');
   field('skills', 'Profession caps (JSON)', 'json');
   field('skill_overrides', 'Forever recipe levels, item id to skill (JSON)', 'json');
@@ -265,20 +267,41 @@ async function loadSettings() {
   };
 }
 
+async function loadCharacters(selected) {
+  const chars = await api('/api/characters');
+  const sel = $('#character');
+  sel.innerHTML = '';
+  sel.add(new Option('Latest character', ''));
+  for (const c of chars) {
+    const professions = Object.entries(c.professions).map(([p, r]) => `${p} ${r}`).join(', ');
+    sel.add(new Option(`${c.character} (${professions})`, c.character));
+  }
+  sel.value = selected || '';
+  sel.style.display = chars.length ? '' : 'none';
+}
+
+$('#character').onchange = async e => {
+  await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({character: e.target.value || null})});
+  loadCrafts();
+  loadSettings();
+};
+
 let lastScans = null;
 async function refreshStatus() {
   try {
     const s = await api('/api/status');
     const el = $('#status');
     const recipes = s.export
-      ? 'Recipes from game: ' + Object.entries(s.export.professions).map(([p, r]) => `${p} ${r}`).join(', ')
+      ? `Recipes from ${s.export.character}: ` + Object.entries(s.export.professions).map(([p, r]) => `${p} ${r}`).join(', ')
       : 'No recipe export yet: open a profession window, then /reload';
     el.textContent = (s.last_error || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`) + '. ' + recipes;
     el.className = s.last_error ? 'error' : '';
-    const state = `${s.scans}:${s.export ? s.export.updated : ''}`;
+    const state = `${s.scans}:${s.export ? s.export.character + s.export.updated : ''}`;
     if (state !== lastScans) {
       lastScans = state;
       loadCrafts();
+      loadCharacters(s.export && s.export.character);
       await loadScans();
       loadSellthrough();
     }
