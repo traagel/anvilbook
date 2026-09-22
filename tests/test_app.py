@@ -30,7 +30,8 @@ def env(tmp_path):
     sv = tmp_path / 'Auctionator.lua'
     sv.write_bytes(savedvariables({str(i): entry(p, 2453, 100) for i, p in PRICES.items()}))
     with TestClient(create_app(data, watch=False)) as client:
-        assert client.put('/api/settings', json={'savedvariables_path': str(sv)}).status_code == 200
+        res = client.put('/api/settings', json={'savedvariables_path': str(sv), 'min_scan_items': 1})
+        assert res.status_code == 200
         yield client, sv
 
 
@@ -71,6 +72,16 @@ def test_empty_database_is_not_stored(env):
     res = client.post('/api/import').json()
     assert res['scan_id'] is None
     assert 'no price data' in res['last_error']
+    assert client.get('/api/scans').json() == []
+
+
+def test_partial_or_wiped_save_is_not_stored(env):
+    client, sv = env
+    client.put('/api/settings', json={'min_scan_items': 3})
+    sv.write_bytes(savedvariables({'2862': entry(4, 2456, 1), '2841': entry(220, 2455, 40)}))
+    res = client.post('/api/import').json()
+    assert res['scan_id'] is None
+    assert 'full AH scan' in res['last_error']
     assert client.get('/api/scans').json() == []
 
 

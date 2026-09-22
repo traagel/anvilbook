@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
     'skill_overrides': {'3490': 100},
     'max_use_level': 20,
     'min_listed': 3,
+    'min_scan_items': 100,
     'cast_seconds': 3,
     'ah_cut': 0.05,
 }

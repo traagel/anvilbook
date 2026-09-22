@@ -96,6 +96,12 @@ Errors are logged. The last good data stays in use.
   scan the AH and `/reload`.
 - After a decode error, the watcher tries the same file again on the next poll,
   because WoW can be in the middle of a write.
+- A save counts as a scan only if at least `min_scan_items` items (default 100) were
+  seen on its latest day. On Forever, Auctionator loses its price database on every
+  game load, and a single search also causes a save. Without this rule those saves
+  would look like everything sold out.
+- WoW's `C_EncodingUtil.SerializeCBOR` writes every string as a CBOR byte string.
+  The importer converts byte strings to text after decoding.
 
 ### api.py
 

@@ -48,6 +48,13 @@ class Importer:
         if not snap.prices:
             self._error('The file has no price data. Scan the AH, then /reload.')
             return None
+        # Auctionator on Forever loses its price database on every load, and a single search
+        # also triggers a save; storing those would read as "everything sold out".
+        scan_day = max(p.day for p in snap.prices)
+        seen = sum(1 for p in snap.prices if p.day == scan_day)
+        if seen < int(s['min_scan_items']):
+            self._error(f'Only {seen} items seen on the latest day; not a full AH scan, so it was skipped.')
+            return None
         scan_id = self.store.add_scan(snap, datetime.fromtimestamp(mtime, timezone.utc), file_hash)
         self.status['last_import'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
         self.status['last_error'] = None
