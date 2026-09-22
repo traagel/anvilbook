@@ -15,9 +15,23 @@ local state = {
 }
 
 local frame, handler
+local registered, known = {}, {TRADE_SKILL_SHOW = true}
 function CreateFrame()
-  frame = {RegisterEvent = function() end, SetScript = function(_, _, fn) handler = fn end}
+  frame = {
+    RegisterEvent = function(_, e)
+      if not known[e] then error('Attempt to register unknown event "' .. e .. '"') end
+      registered[e] = true
+    end,
+    SetScript = function(_, _, fn) handler = fn end,
+  }
   return frame
+end
+local timers = {}
+C_Timer = {After = function(_, fn) timers[#timers + 1] = fn end}
+local function runTimers()
+  local due = timers
+  timers = {}
+  for _, fn in ipairs(due) do fn() end
 end
 function GetTradeSkillLine() return unpack(state.line) end
 function ExpandTradeSkillSubClass()
@@ -39,6 +53,8 @@ function print(...) printed[#printed + 1] = table.concat({...}, " ") end
 time = os.time
 
 assert(loadfile(arg[1]))("AnvilbookExport", {})
+
+assert(handler and registered.TRADE_SKILL_SHOW, "SHOW is registered although the update events are unknown")
 
 local function fire(event) handler(frame, event) end
 local function prof(name) return AnvilbookExportDB.characters["Thordak - Classic Beta PvP"].professions[name] end
@@ -68,9 +84,10 @@ assert(AnvilbookExportDB.lastError == nil, "a successful record clears the error
 
 state.skills[3].reagents[1][3] = "|cffffffff|Hitem:2838::|h[Heavy Stone]|h|r"
 table.remove(state.skills, 2)
-fire("TRADE_SKILL_UPDATE")
-assert(state.expanded == 1, "update does not expand again")
-assert(bs.recipes[2871] and bs.recipes[2871].reagents[1].id == 2838, "cached recipe added on update")
+assert(#timers == 2, "SHOW schedules 2 retries")
+runTimers()
+assert(state.expanded == 1, "a retry does not expand again")
+assert(bs.recipes[2871] and bs.recipes[2871].reagents[1].id == 2838, "cached recipe added by the retry")
 assert(bs.recipes[3490], "recipes hidden by a filter are kept")
 
 state.line = {"UNKNOWN", 0, 0}

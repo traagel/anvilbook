@@ -11,7 +11,7 @@ local function record(db, expand)
     return nil
   end
   -- Collapsed headers hide their recipes from GetTradeSkillInfo.
-  if expand then
+  if expand and ExpandTradeSkillSubClass then
     ExpandTradeSkillSubClass(0)
   end
 
@@ -52,10 +52,8 @@ local function record(db, expand)
   return profession, recorded
 end
 
-frame:RegisterEvent("TRADE_SKILL_SHOW")
-frame:RegisterEvent("TRADE_SKILL_UPDATE")
-frame:SetScript("OnEvent", function(_, event)
-  -- ExpandTradeSkillSubClass fires TRADE_SKILL_UPDATE.
+local function run(event)
+  -- ExpandTradeSkillSubClass fires an update event.
   if busy then
     return
   end
@@ -74,5 +72,17 @@ frame:SetScript("OnEvent", function(_, event)
   db.lastError = nil
   if profession and event == "TRADE_SKILL_SHOW" then
     print(("Anvilbook: %d %s recipes recorded"):format(recorded, profession))
+    -- Reagent links are cached late, and this client may not have an update event.
+    if C_Timer then
+      C_Timer.After(1, function() run("RETRY") end)
+      C_Timer.After(3, function() run("RETRY") end)
+    end
   end
-end)
+end
+
+frame:SetScript("OnEvent", function(_, event) run(event) end)
+frame:RegisterEvent("TRADE_SKILL_SHOW")
+-- Registering an event this client does not know raises an error.
+for _, event in ipairs({"TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE"}) do
+  pcall(frame.RegisterEvent, frame, event)
+end
