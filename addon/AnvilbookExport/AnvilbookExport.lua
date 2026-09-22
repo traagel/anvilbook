@@ -1,3 +1,6 @@
+-- Bumped when a fix makes older saved data wrong; it is then thrown away.
+local VERSION = 2
+
 local frame = CreateFrame("Frame")
 local busy = false
 
@@ -21,6 +24,38 @@ local function itemName(id)
   end
 end
 
+-- GetAllRecipeIDs also returns other professions' recipes, so recipes are kept only
+-- when their category belongs to the open profession.
+local function categorySet(api)
+  if not api.GetCategories then
+    return nil
+  end
+  local ok, top = pcall(api.GetCategories)
+  if not ok or type(top) ~= "table" or #top == 0 then
+    return nil
+  end
+  local set, pending, count = {}, {}, 0
+  for _, id in ipairs(top) do
+    pending[#pending + 1] = id
+  end
+  while #pending > 0 do
+    local id = table.remove(pending)
+    if not set[id] then
+      set[id] = true
+      count = count + 1
+      if api.GetSubCategories then
+        local okSub, subs = pcall(api.GetSubCategories, id)
+        if okSub and type(subs) == "table" then
+          for _, sub in ipairs(subs) do
+            pending[#pending + 1] = sub
+          end
+        end
+      end
+    end
+  end
+  return set, count
+end
+
 -- Forever runs the retail professions UI, so recipes come from C_TradeSkillUI.
 local function modernRecipes(db)
   local api = C_TradeSkillUI
@@ -30,13 +65,15 @@ local function modernRecipes(db)
     return nil
   end
   local ids = api.GetAllRecipeIDs and api.GetAllRecipeIDs() or {}
-  local debug = {api = "modern", recipeCount = #ids, professionInfo = info}
+  local categories, categoryCount = categorySet(api)
+  local debug = {api = "modern", recipeCount = #ids, professionInfo = info, categories = categoryCount}
   db.debug = debug
   local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
   local recipes, recorded = {}, 0
   for _, recipeID in ipairs(ids) do
     local recipe = api.GetRecipeInfo(recipeID)
-    local schematic = recipe and recipe.learned and api.GetRecipeSchematic(recipeID, false)
+    local mine = recipe and (not categories or not recipe.categoryID or categories[recipe.categoryID])
+    local schematic = mine and recipe.learned and api.GetRecipeSchematic(recipeID, false)
     local outputId = schematic and schematic.outputItemID
     if outputId and outputId ~= 0 then
       local reagents = {}
@@ -57,7 +94,7 @@ local function modernRecipes(db)
       end
     end
   end
-  return profession, info.skillLevel, info.maxSkillLevel, recipes, recorded
+  return profession, info.skillLevel, info.maxSkillLevel, recipes, recorded, categories ~= nil
 end
 
 local function classicRecipes(db, expand)
@@ -97,9 +134,9 @@ local function classicRecipes(db, expand)
 end
 
 local function record(db, expand)
-  local profession, rank, maxRank, recipes, recorded
+  local profession, rank, maxRank, recipes, recorded, verified
   if C_TradeSkillUI and C_TradeSkillUI.GetAllRecipeIDs then
-    profession, rank, maxRank, recipes, recorded = modernRecipes(db)
+    profession, rank, maxRank, recipes, recorded, verified = modernRecipes(db)
   else
     profession, rank, maxRank, recipes, recorded = classicRecipes(db, expand)
   end
@@ -107,7 +144,9 @@ local function record(db, expand)
     return nil
   end
 
-  db.version = 1
+  if db.version ~= VERSION then
+    db.version, db.characters = VERSION, nil
+  end
   db.characters = db.characters or {}
   local key = UnitName("player") .. " - " .. GetRealmName()
   local char = db.characters[key] or {professions = {}}
@@ -117,8 +156,13 @@ local function record(db, expand)
   prof.rank, prof.maxRank = rank, maxRank
   prof.updated = time()
   char.updated = prof.updated
-  for id, recipe in pairs(recipes) do
-    prof.recipes[id] = recipe
+  -- A verified list is complete, so it also clears recipes saved by an earlier version.
+  if verified then
+    prof.recipes = recipes
+  else
+    for id, recipe in pairs(recipes) do
+      prof.recipes[id] = recipe
+    end
   end
   return profession, recorded
 end
