@@ -33,7 +33,9 @@ function GetTradeSkillReagentInfo(i, r) local x = state.skills[i].reagents[r]; r
 function GetTradeSkillReagentItemLink(i, r) return state.skills[i].reagents[r][3] end
 function UnitName() return "Thordak" end
 function GetRealmName() return "Classic Beta PvP" end
-function geterrorhandler() return error end
+local errors, printed = {}, {}
+function geterrorhandler() return function(e) errors[#errors + 1] = e end end
+function print(...) printed[#printed + 1] = table.concat({...}, " ") end
 time = os.time
 
 assert(loadfile(arg[1]))("AnvilbookExport", {})
@@ -52,6 +54,17 @@ assert(poniard.reagents[1].id == 2841 and poniard.reagents[1].count == 4 and pon
        "first reagent recorded")
 assert(poniard.reagents[2].id == 3466, "second reagent recorded")
 assert(bs.recipes[2871] == nil, "recipe with an uncached reagent is skipped")
+assert(printed[#printed] == "Anvilbook: 1 Blacksmithing recipes recorded", "chat line, got " .. tostring(printed[#printed]))
+assert(AnvilbookExportDB.lastEvent.event == "TRADE_SKILL_SHOW", "last event stored")
+
+local realCount = GetNumTradeSkills
+GetNumTradeSkills = function() error("boom") end
+fire("TRADE_SKILL_UPDATE")
+assert(AnvilbookExportDB.lastError and AnvilbookExportDB.lastError:find("boom"), "error stored")
+assert(#errors == 1, "error reported to the error handler")
+GetNumTradeSkills = realCount
+fire("TRADE_SKILL_UPDATE")
+assert(AnvilbookExportDB.lastError == nil, "a successful record clears the error")
 
 state.skills[3].reagents[1][3] = "|cffffffff|Hitem:2838::|h[Heavy Stone]|h|r"
 table.remove(state.skills, 2)
@@ -71,4 +84,4 @@ state.skills = {{name = "Smelt Bronze", kind = "easy", made = {2, 2},
 fire("TRADE_SKILL_SHOW")
 assert(prof("Smelting").recipes[2841].minMade == 2, "smelting recorded under its own name")
 
-print("OK")
+io.write("OK\n")
