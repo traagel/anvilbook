@@ -1,11 +1,66 @@
 local frame = CreateFrame("Frame")
 local busy = false
 
+local DIFFICULTY = {}
+if Enum and Enum.TradeskillRelativeDifficulty then
+  for name, value in pairs(Enum.TradeskillRelativeDifficulty) do
+    DIFFICULTY[value] = name:lower()
+  end
+end
+
 local function itemId(link)
   return link and tonumber(link:match("item:(%d+)"))
 end
 
-local function record(db, expand)
+local function itemName(id)
+  if C_Item and C_Item.GetItemNameByID then
+    return C_Item.GetItemNameByID(id)
+  end
+  if GetItemInfo then
+    return (GetItemInfo(id))
+  end
+end
+
+-- Forever runs the retail professions UI, so recipes come from C_TradeSkillUI.
+local function modernRecipes(db)
+  local api = C_TradeSkillUI
+  local info = api.GetBaseProfessionInfo and api.GetBaseProfessionInfo()
+  local profession = info and (info.professionName or info.parentProfessionName)
+  if not profession then
+    return nil
+  end
+  local ids = api.GetAllRecipeIDs and api.GetAllRecipeIDs() or {}
+  local debug = {api = "modern", recipeCount = #ids, professionInfo = info}
+  db.debug = debug
+  local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
+  local recipes, recorded = {}, 0
+  for _, recipeID in ipairs(ids) do
+    local recipe = api.GetRecipeInfo(recipeID)
+    local schematic = recipe and recipe.learned and api.GetRecipeSchematic(recipeID, false)
+    local outputId = schematic and schematic.outputItemID
+    if outputId and outputId ~= 0 then
+      local reagents = {}
+      for _, slot in ipairs(schematic.reagentSlotSchematics or {}) do
+        local first = slot.reagents and slot.reagents[1]
+        -- Optional and finishing reagents are not part of the base cost.
+        if first and first.itemID and (not basic or slot.reagentType == basic) then
+          reagents[#reagents + 1] = {id = first.itemID, count = slot.quantityRequired or 1,
+                                     name = itemName(first.itemID)}
+        end
+      end
+      recipes[outputId] = {name = recipe.name or schematic.name, minMade = schematic.quantityMin or 1,
+                           maxMade = schematic.quantityMax or 1, difficulty = DIFFICULTY[recipe.relativeDifficulty],
+                           reagents = reagents}
+      recorded = recorded + 1
+      if not debug.sample then
+        debug.sample = {recipeInfo = recipe, schematic = schematic}
+      end
+    end
+  end
+  return profession, info.skillLevel, info.maxSkillLevel, recipes, recorded
+end
+
+local function classicRecipes(db, expand)
   local profession, rank, maxRank = GetTradeSkillLine()
   if not profession or profession == "UNKNOWN" then
     return nil
@@ -13,6 +68,43 @@ local function record(db, expand)
   -- Collapsed headers hide their recipes from GetTradeSkillInfo.
   if expand and ExpandTradeSkillSubClass then
     ExpandTradeSkillSubClass(0)
+  end
+  db.debug = {api = "classic", recipeCount = GetNumTradeSkills()}
+  local recipes, recorded = {}, 0
+  for i = 1, GetNumTradeSkills() do
+    local name, kind = GetTradeSkillInfo(i)
+    local id = kind ~= "header" and itemId(GetTradeSkillItemLink(i))
+    if id then
+      local reagents = {}
+      for r = 1, GetTradeSkillNumReagents(i) do
+        local reagentName, _, count = GetTradeSkillReagentInfo(i, r)
+        local reagentId = itemId(GetTradeSkillReagentItemLink(i, r))
+        -- Links are nil until the client caches the item; a retry fills them in.
+        if not reagentId or not count then
+          reagents = nil
+          break
+        end
+        reagents[r] = {id = reagentId, count = count, name = reagentName}
+      end
+      if reagents then
+        local minMade, maxMade = GetTradeSkillNumMade(i)
+        recipes[id] = {name = name, minMade = minMade, maxMade = maxMade, difficulty = kind, reagents = reagents}
+        recorded = recorded + 1
+      end
+    end
+  end
+  return profession, rank, maxRank, recipes, recorded
+end
+
+local function record(db, expand)
+  local profession, rank, maxRank, recipes, recorded
+  if C_TradeSkillUI and C_TradeSkillUI.GetAllRecipeIDs then
+    profession, rank, maxRank, recipes, recorded = modernRecipes(db)
+  else
+    profession, rank, maxRank, recipes, recorded = classicRecipes(db, expand)
+  end
+  if not profession then
+    return nil
   end
 
   db.version = 1
@@ -25,35 +117,14 @@ local function record(db, expand)
   prof.rank, prof.maxRank = rank, maxRank
   prof.updated = time()
   char.updated = prof.updated
-
-  local recorded = 0
-  for i = 1, GetNumTradeSkills() do
-    local name, kind = GetTradeSkillInfo(i)
-    local id = kind ~= "header" and itemId(GetTradeSkillItemLink(i))
-    if id then
-      local reagents = {}
-      for r = 1, GetTradeSkillNumReagents(i) do
-        local reagentName, _, count = GetTradeSkillReagentInfo(i, r)
-        local reagentId = itemId(GetTradeSkillReagentItemLink(i, r))
-        -- Links are nil until the client caches the item; a later update fills them in.
-        if not reagentId or not count then
-          reagents = nil
-          break
-        end
-        reagents[r] = {id = reagentId, count = count, name = reagentName}
-      end
-      if reagents then
-        local minMade, maxMade = GetTradeSkillNumMade(i)
-        prof.recipes[id] = {name = name, minMade = minMade, maxMade = maxMade, difficulty = kind, reagents = reagents}
-        recorded = recorded + 1
-      end
-    end
+  for id, recipe in pairs(recipes) do
+    prof.recipes[id] = recipe
   end
   return profession, recorded
 end
 
 local function run(event)
-  -- ExpandTradeSkillSubClass fires an update event.
+  -- Expanding headers fires an update event.
   if busy then
     return
   end
@@ -72,7 +143,7 @@ local function run(event)
   db.lastError = nil
   if profession and event == "TRADE_SKILL_SHOW" then
     print(("Anvilbook: %d %s recipes recorded"):format(recorded, profession))
-    -- Reagent links are cached late, and this client may not have an update event.
+    -- Item data is cached late, and the client may have no update event.
     if C_Timer then
       C_Timer.After(1, function() run("RETRY") end)
       C_Timer.After(3, function() run("RETRY") end)
@@ -83,6 +154,6 @@ end
 frame:SetScript("OnEvent", function(_, event) run(event) end)
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 -- Registering an event this client does not know raises an error.
-for _, event in ipairs({"TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE"}) do
+for _, event in ipairs({"TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED"}) do
   pcall(frame.RegisterEvent, frame, event)
 end
