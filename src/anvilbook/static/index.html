@@ -28,6 +28,10 @@ th:first-child, td:first-child { text-align:left; }
 th { cursor:pointer; user-select:none; color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--bg); }
 tbody tr { cursor:pointer; }
 tr.detail td { text-align:left; white-space:normal; color:var(--muted); }
+.d-optimal { color:#e8742a; }
+.d-medium { color:#c9a400; }
+.d-easy { color:#3fa34d; }
+.d-trivial { color:var(--muted); }
 .pos { color:var(--good); }
 .neg { color:var(--bad); }
 .note { color:var(--muted); font-size:12px; margin:.5rem 0; }
@@ -122,7 +126,8 @@ function renderTable(el, cols, rows, onRowClick) {
 const craftCols = [
   {key: 'name', label: 'Item'},
   {key: 'profession', label: 'Profession'},
-  {key: 'skill', label: 'Skill'},
+  {key: 'skill', label: 'Skill / skill-up', fmt: (v, r) => r.difficulty || v,
+   cls: (v, r) => r.difficulty ? 'd-' + r.difficulty : ''},
   {key: 'cost', label: 'Cost', fmt: money},
   {key: 'revenue', label: 'Net sale', fmt: money},
   {key: 'profit', label: 'Profit', fmt: money},
@@ -228,6 +233,7 @@ async function loadSettings() {
     f.appendChild(l);
   };
   field('savedvariables_path', 'SavedVariables file', 'text');
+  field('export_path', 'AnvilbookExport file (recipes from the game)', 'text');
   field('realm', 'Realm (empty = first realm in the file)', 'text');
   field('skills', 'Profession caps (JSON)', 'json');
   field('skill_overrides', 'Forever recipe levels, item id to skill (JSON)', 'json');
@@ -264,10 +270,14 @@ async function refreshStatus() {
   try {
     const s = await api('/api/status');
     const el = $('#status');
-    el.textContent = s.last_error || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`;
+    const recipes = s.export
+      ? 'Recipes from game: ' + Object.entries(s.export.professions).map(([p, r]) => `${p} ${r}`).join(', ')
+      : 'No recipe export yet: open a profession window, then /reload';
+    el.textContent = (s.last_error || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`) + '. ' + recipes;
     el.className = s.last_error ? 'error' : '';
-    if (s.scans !== lastScans) {
-      lastScans = s.scans;
+    const state = `${s.scans}:${s.export ? s.export.updated : ''}`;
+    if (state !== lastScans) {
+      lastScans = state;
       loadCrafts();
       await loadScans();
       loadSellthrough();

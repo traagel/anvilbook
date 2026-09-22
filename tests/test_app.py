@@ -30,7 +30,8 @@ def env(tmp_path):
     sv = tmp_path / 'Auctionator.lua'
     sv.write_bytes(savedvariables({str(i): entry(p, 2453, 100) for i, p in PRICES.items()}))
     with TestClient(create_app(data, watch=False)) as client:
-        res = client.put('/api/settings', json={'savedvariables_path': str(sv), 'min_scan_items': 1})
+        res = client.put('/api/settings', json={'savedvariables_path': str(sv), 'min_scan_items': 1,
+                                                'export_path': str(tmp_path / 'AnvilbookExport.lua')})
         assert res.status_code == 200
         yield client, sv
 
@@ -41,7 +42,45 @@ def test_import_and_crafts(env):
     assert client.post('/api/import').json()['scan_id'] is None
     names = [r['name'] for r in client.get('/api/crafts').json()]
     assert 'Bronze Bar' in names
-    assert client.get('/api/status').json()['scans'] == 1
+    status = client.get('/api/status').json()
+    assert (status['scans'], status['export']) == (1, None)
+
+
+GAME_EXPORT = b'''
+AnvilbookExportDB = {
+["characters"] = {
+["Thordak - Classic Beta PvP"] = {
+["updated"] = 200,
+["professions"] = {
+["Smelting"] = {
+["rank"] = 99,
+["maxRank"] = 150,
+["recipes"] = {
+[2840] = { ["name"] = "Copper Bar", ["minMade"] = 1, ["maxMade"] = 1, ["difficulty"] = "trivial",
+  ["reagents"] = { { ["id"] = 2770, ["count"] = 1, }, }, },
+[3576] = { ["name"] = "Tin Bar", ["minMade"] = 1, ["maxMade"] = 1, ["difficulty"] = "easy",
+  ["reagents"] = { { ["id"] = 2771, ["count"] = 1, }, }, },
+[2841] = { ["name"] = "Bronze Bar", ["minMade"] = 2, ["maxMade"] = 2, ["difficulty"] = "easy",
+  ["reagents"] = { { ["id"] = 2840, ["count"] = 2, }, { ["id"] = 3576, ["count"] = 1, }, }, },
+},
+},
+},
+},
+},
+}
+'''
+
+
+def test_crafts_use_game_recipes(env, tmp_path):
+    client, _ = env
+    (tmp_path / 'AnvilbookExport.lua').write_bytes(GAME_EXPORT)
+    client.post('/api/import')
+    bronze = next(r for r in client.get('/api/crafts').json() if r['item_id'] == 2841)
+    # Game recipe needs 2 Copper Bars: best per cast is 2 bought bars + smelted tin (146 + 200, 2 casts).
+    assert (bronze['cost'], bronze['casts'], bronze['difficulty']) == (346, 2, 'easy')
+    export = client.get('/api/status').json()['export']
+    assert export['character'] == 'Thordak - Classic Beta PvP'
+    assert export['professions'] == {'Mining': 99}
 
 
 def test_search_and_history(env):

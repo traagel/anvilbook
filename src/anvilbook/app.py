@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse
 
 from .craft import Calculator, CraftSettings
 from .items import load_items
+from .luatable import LuaParseError
+from .recipes import GameExport, export_skills, load_export, merge
 from .store import Store
 from .watcher import Importer
 
@@ -30,6 +32,14 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         if 'items' not in cache:
             cache['items'] = load_items(data_dir / 'items.json')
         return cache['items']
+
+    def game_export() -> GameExport | None:
+        path = Path(store.settings()['export_path']).expanduser()
+        try:
+            return load_export(path)
+        except LuaParseError as e:
+            log.warning('recipe export unreadable: %s', e)
+            return None
 
     async def watch_loop() -> None:
         while True:
@@ -55,7 +65,9 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
 
     @app.get('/api/status')
     def status():
-        return {**importer.status, 'scans': len(store.scans())}
+        exp = game_export()
+        summary = exp and {'character': exp.character, 'updated': exp.updated, 'professions': export_skills(exp)}
+        return {**importer.status, 'scans': len(store.scans()), 'export': summary}
 
     @app.post('/api/import')
     def do_import():
@@ -70,8 +82,13 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         scan_id = store.latest_scan_id()
         if scan_id is None:
             return []
-        calc = Calculator(items(), store.prices(scan_id), store.vendor_prices(),
-                          CraftSettings.from_dict(store.settings()))
+        settings = CraftSettings.from_dict(store.settings())
+        known = items()
+        exp = game_export()
+        if exp:
+            known = merge(known, exp)
+            settings.skills = {**settings.skills, **export_skills(exp)}
+        calc = Calculator(known, store.prices(scan_id), store.vendor_prices(), settings)
         return [asdict(r) for r in calc.rows()]
 
     @app.get('/api/items/search')
