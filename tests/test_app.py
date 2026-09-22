@@ -1,0 +1,92 @@
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+
+from anvilbook.app import create_app
+from lua_fixture import entry, savedvariables
+
+
+def recipe(skill, reagents, amount=(1, 1)):
+    return {'amount': list(amount), 'requiredSkill': skill, 'category': 'Mining',
+            'reagents': [{'itemId': i, 'amount': n} for i, n in reagents]}
+
+
+ITEMS = [
+    {'itemId': 2770, 'name': 'Copper Ore'},
+    {'itemId': 2771, 'name': 'Tin Ore'},
+    {'itemId': 2840, 'name': 'Copper Bar', 'createdBy': [recipe(1, [(2770, 1)])]},
+    {'itemId': 3576, 'name': 'Tin Bar', 'createdBy': [recipe(65, [(2771, 1)])]},
+    {'itemId': 2841, 'name': 'Bronze Bar', 'createdBy': [recipe(65, [(2840, 1), (3576, 1)], (2, 2))]},
+]
+PRICES = {2770: 57, 2771: 200, 2840: 73, 3576: 248, 2841: 220}
+
+
+@pytest.fixture
+def env(tmp_path):
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / 'items.json').write_text(json.dumps(ITEMS))
+    sv = tmp_path / 'Auctionator.lua'
+    sv.write_bytes(savedvariables({str(i): entry(p, 2453, 100) for i, p in PRICES.items()}))
+    with TestClient(create_app(data, watch=False)) as client:
+        assert client.put('/api/settings', json={'savedvariables_path': str(sv)}).status_code == 200
+        yield client, sv
+
+
+def test_import_and_crafts(env):
+    client, _ = env
+    assert client.post('/api/import').json()['scan_id'] == 1
+    assert client.post('/api/import').json()['scan_id'] is None
+    names = [r['name'] for r in client.get('/api/crafts').json()]
+    assert 'Bronze Bar' in names
+    assert client.get('/api/status').json()['scans'] == 1
+
+
+def test_search_and_history(env):
+    client, _ = env
+    client.post('/api/import')
+    hits = client.get('/api/items/search', params={'q': 'bron'}).json()
+    assert [h['item_id'] for h in hits] == [2841]
+    points = client.get('/api/items/2841/history').json()['points']
+    assert [(p['min_price'], p['available']) for p in points] == [(220, 100)]
+    assert client.get('/api/items/999999/history').status_code == 404
+
+
+def test_sellthrough_between_two_scans(env):
+    client, sv = env
+    client.post('/api/import')
+    assert client.get('/api/sellthrough').json()['rows'] == []
+    sv.write_bytes(savedvariables({'2841': entry(220, 2454, 40)}))
+    client.post('/api/import')
+    res = client.get('/api/sellthrough').json()
+    assert (res['from'], res['to']) == (1, 2)
+    bronze = next(r for r in res['rows'] if r['item_id'] == 2841)
+    assert (bronze['change'], bronze['name']) == (-60, 'Bronze Bar')
+
+
+def test_empty_database_is_not_stored(env):
+    client, sv = env
+    sv.write_bytes(savedvariables({'version': 2}))
+    res = client.post('/api/import').json()
+    assert res['scan_id'] is None
+    assert 'no price data' in res['last_error']
+    assert client.get('/api/scans').json() == []
+
+
+def test_missing_file_reports_status(env):
+    client, sv = env
+    sv.unlink()
+    res = client.post('/api/import').json()
+    assert res['found'] is False
+
+
+def test_bad_settings_are_rejected(env):
+    client, _ = env
+    assert client.put('/api/settings', json={'bogus': 1}).status_code == 400
+    assert client.put('/api/settings', json={'min_listed': 'x'}).status_code == 400
+
+
+def test_index_is_served(env):
+    client, _ = env
+    assert 'anvilbook' in client.get('/').text
