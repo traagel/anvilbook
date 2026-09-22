@@ -19,16 +19,28 @@ def lua_escape(b: bytes) -> bytes:
     return bytes(out)
 
 
+def as_bytes(v):
+    if isinstance(v, str):
+        return v.encode()
+    if isinstance(v, dict):
+        return {as_bytes(k): as_bytes(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [as_bytes(x) for x in v]
+    return v
+
+
 def entry(m, day, available, high=None):
     return {'m': m, 'h': {str(day): high if high is not None else m}, 'a': {str(day): available}, 'l': []}
 
 
-def savedvariables(realm_data, realm='ClassicBetaPvP', vendor=None, as_table=False):
+def savedvariables(realm_data, realm='ClassicBetaPvP', vendor=None, as_table=False, byte_strings=True):
+    """byte_strings mirrors C_EncodingUtil.SerializeCBOR, which writes every string as a CBOR byte string."""
     lines = [b'AUCTIONATOR_CONFIG = {', b'}', b'AUCTIONATOR_PRICE_DATABASE = {', b'["__dbversion"] = 8,']
     if as_table:
         lines += [b'["' + realm.encode() + b'"] = {', b'},']
     else:
-        lines.append(b'["' + realm.encode() + b'"] = "' + lua_escape(cbor2.dumps(realm_data)) + b'",')
+        data = as_bytes(realm_data) if byte_strings else realm_data
+        lines.append(b'["' + realm.encode() + b'"] = "' + lua_escape(cbor2.dumps(data)) + b'",')
     lines += [b'}', b'AUCTIONATOR_VENDOR_PRICE_CACHE = {', b'["__dbversion"] = 1,']
     lines += [f'["{k}"] = {v},'.encode() for k, v in (vendor or {}).items()]
     lines.append(b'}')

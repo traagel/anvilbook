@@ -67,13 +67,24 @@ def _realm_literal(block: bytes, realm: str) -> bytes:
     return lua_unescape(m.group(1))
 
 
+def _text(v):
+    # C_EncodingUtil.SerializeCBOR writes every Lua string as a CBOR byte string.
+    if isinstance(v, bytes):
+        return v.decode('utf-8', 'replace')
+    if isinstance(v, dict):
+        return {_text(k): _text(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_text(x) for x in v]
+    return v
+
+
 def _day_map(v) -> dict[int, int]:
     return {int(k): int(n) for k, n in v.items()} if isinstance(v, dict) else {}
 
 
 def parse_prices(raw: bytes) -> list[ItemPrice]:
     try:
-        data = cbor2.loads(raw)
+        data = _text(cbor2.loads(raw))
     except cbor2.CBORDecodeError as e:
         raise DecodeError(f'CBOR decode failed: {e}') from e
     if not isinstance(data, dict):

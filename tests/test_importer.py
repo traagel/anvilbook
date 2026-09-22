@@ -29,7 +29,8 @@ def test_lua_unescape_rejects_bad_escapes(raw):
         lua_unescape(raw)
 
 
-def test_read_snapshot_round_trip_with_escaped_bytes():
+@pytest.mark.parametrize('byte_strings', [True, False])
+def test_read_snapshot_round_trip_with_escaped_bytes(byte_strings):
     data = {
         'version': 2,
         '2770': entry(57, 2453, 10, 73),
@@ -38,7 +39,7 @@ def test_read_snapshot_round_trip_with_escaped_bytes():
         '3576': entry(92, 2453, 4360),
         'g:1234:5': entry(1, 2453, 1),
     }
-    text = savedvariables(data, vendor={3466: 1900, 2880: 95})
+    text = savedvariables(data, vendor={3466: 1900, 2880: 95}, byte_strings=byte_strings)
     assert b'\\' in text
 
     snap = read_snapshot(text)
