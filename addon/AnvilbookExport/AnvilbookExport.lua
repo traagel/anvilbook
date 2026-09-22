@@ -1,8 +1,11 @@
 -- Bumped when a fix makes older saved data wrong; it is then thrown away.
-local VERSION = 4
+local VERSION = 5
+local RETRIES = 5
 
 local frame = CreateFrame("Frame")
 local busy = false
+local lastSeen
+local reported = {}
 
 local DIFFICULTY = {}
 if Enum and Enum.TradeskillRelativeDifficulty then
@@ -61,7 +64,7 @@ local function modernRecipes(db)
   local api = C_TradeSkillUI
   local info = api.GetBaseProfessionInfo and api.GetBaseProfessionInfo()
   local profession = info and (info.professionName or info.parentProfessionName)
-  if not profession then
+  if not profession or profession == "" then
     return nil
   end
   local all = api.GetAllRecipeIDs and api.GetAllRecipeIDs() or {}
@@ -78,6 +81,15 @@ local function modernRecipes(db)
   debug.source = filtered and "filtered" or "categories"
   if not filtered and not categories then
     debug.skipped = "cannot tell which recipes belong to this profession"
+    return nil
+  end
+
+  -- The open profession changes before its recipe list does, so a single read can mix
+  -- one profession's name with another's recipes. Only a repeated reading is trusted.
+  local seen = table.concat({info.professionID or profession, #ids, ids[1] or 0, ids[#ids] or 0}, ":")
+  if seen ~= lastSeen then
+    lastSeen = seen
+    debug.skipped = "waiting for the recipe list to settle"
     return nil
   end
   local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
@@ -179,7 +191,7 @@ local function record(db, expand)
   return profession, recorded
 end
 
-local function run(event)
+local function run(event, attempt)
   -- Expanding headers fires an update event.
   if busy then
     return
@@ -197,13 +209,13 @@ local function run(event)
     return
   end
   db.lastError = nil
-  if profession and event == "TRADE_SKILL_SHOW" then
+  if profession and reported[profession] ~= recorded then
+    reported[profession] = recorded
     print(("Anvilbook: %d %s recipes recorded"):format(recorded, profession))
-    -- Item data is cached late, and the client may have no update event.
-    if C_Timer then
-      C_Timer.After(1, function() run("RETRY") end)
-      C_Timer.After(3, function() run("RETRY") end)
-    end
+  end
+  -- Item data and the recipe list arrive late, and the client may have no update event.
+  if C_Timer and (attempt or 0) < RETRIES then
+    C_Timer.After(1, function() run("RETRY", (attempt or 0) + 1) end)
   end
 end
 

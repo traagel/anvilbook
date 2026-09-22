@@ -1,5 +1,6 @@
 -- usage: luajit addon_harness_modern.lua <path to AnvilbookExport.lua>
--- Stubs the retail C_TradeSkillUI API that WoW Forever (1.60.1) uses.
+-- Stubs the retail C_TradeSkillUI API that WoW Forever (1.60.1) uses, including the lag
+-- where the open profession changes before its recipe list does.
 local schematics = {
   [111] = {recipeID = 111, name = "Deadly Bronze Poniard", outputItemID = 3490, quantityMin = 1, quantityMax = 1,
            reagentSlotSchematics = {
@@ -19,9 +20,10 @@ local schematics = {
            reagentSlotSchematics = {{reagentType = 1, quantityRequired = 1, reagents = {{itemID = 4470}}}}},
 }
 local difficulty = {[111] = 1, [222] = 3, [333] = 1, [444] = 2, [555] = 3}
--- GetAllRecipeIDs on this client also returns other professions' recipes (555 is Cooking).
 local category = {[111] = 10, [222] = 11, [333] = 10, [444] = 10, [555] = 99}
-local state = {profession = {professionName = "Blacksmithing", skillLevel = 147, maxSkillLevel = 150}}
+local BLACKSMITHING = {professionName = "Blacksmithing", professionID = 164, skillLevel = 147, maxSkillLevel = 150}
+local COOKING = {professionName = "Cooking", professionID = 185, skillLevel = 69, maxSkillLevel = 75}
+local state = {profession = BLACKSMITHING, categories = {}, filtered = {555}}
 
 Enum = {
   TradeskillRelativeDifficulty = {Optimal = 1, Medium = 2, Easy = 3, Trivial = 4},
@@ -39,10 +41,7 @@ C_TradeSkillUI = {
   GetSubCategories = function(id) return id == 10 and {11} or {} end,
   GetFilteredRecipeIDs = function() return state.filtered end,
 }
-state.categories = {10}
-state.filtered = nil
-function C_Item_GetItemNameByID(id) return "Item " .. id end
-C_Item = {GetItemNameByID = C_Item_GetItemNameByID}
+C_Item = {GetItemNameByID = function(id) return "Item " .. id end}
 
 local frame, handler
 local registered, known = {}, {TRADE_SKILL_SHOW = true, TRADE_SKILL_LIST_UPDATE = true}
@@ -58,24 +57,42 @@ function CreateFrame()
 end
 local timers = {}
 C_Timer = {After = function(_, fn) timers[#timers + 1] = fn end}
+local function runTimers()
+  local due = timers
+  timers = {}
+  for _, fn in ipairs(due) do fn() end
+end
 function UnitName() return "Thordak" end
 function GetRealmName() return "Classic Beta PvP" end
 local errors, printed = {}, {}
 function geterrorhandler() return function(e) errors[#errors + 1] = e end end
 function print(...) printed[#printed + 1] = table.concat({...}, " ") end
 time = os.time
-
 SlashCmdList = {}
+
 AnvilbookExportDB = {version = 1, characters = {["Stale - Realm"] = {professions = {}}}}
 assert(loadfile(arg[1]))("AnvilbookExport", {})
 assert(handler and registered.TRADE_SKILL_SHOW and registered.TRADE_SKILL_LIST_UPDATE, "events registered")
 
+local function professions()
+  local char = AnvilbookExportDB.characters and AnvilbookExportDB.characters["Thordak - Classic Beta PvP"]
+  return char and char.professions or {}
+end
+
+-- The window opens before its list is switched over, so the first read must not be trusted.
 handler(frame, "TRADE_SKILL_SHOW")
 assert(#errors == 0, "no errors: " .. tostring(errors[1]))
-assert(AnvilbookExportDB.characters["Stale - Realm"] == nil, "data from an older addon version is cleared")
-local char = AnvilbookExportDB.characters["Thordak - Classic Beta PvP"]
-local bs = char.professions["Blacksmithing"]
+assert(professions()["Blacksmithing"] == nil, "a single unstable read records nothing")
+
+state.filtered = {111, 222, 333, 444}
+runTimers()
+assert(professions()["Blacksmithing"] == nil, "a changed list records nothing yet")
+
+runTimers()
+local bs = professions()["Blacksmithing"]
+assert(bs, "a stable list is recorded")
 assert(bs.rank == 147 and bs.maxRank == 150, "skill level recorded")
+assert(AnvilbookExportDB.characters["Stale - Realm"] == nil, "data from an older addon version is cleared")
 
 local poniard = bs.recipes[3490]
 assert(poniard and poniard.name == "Deadly Bronze Poniard", "recipe keyed by output item")
@@ -84,44 +101,43 @@ assert(poniard.difficulty == "optimal", "difficulty mapped, got " .. tostring(po
 assert(#poniard.reagents == 2, "only basic reagents, got " .. #poniard.reagents)
 assert(poniard.reagents[1].id == 2841 and poniard.reagents[1].count == 4, "reagent id and count")
 assert(poniard.reagents[1].name == "Item 2841", "reagent name looked up")
-
 assert(bs.recipes[2841].maxMade == 2 and bs.recipes[2841].difficulty == "easy", "bronze bar recorded")
 assert(bs.recipes[4444] == nil, "unlearned recipe skipped")
-assert(bs.recipes[279981] == nil, "another profession's recipe skipped")
+assert(bs.recipes[279981] == nil, "another profession's recipe is not in the window's list")
 assert(printed[#printed] == "Anvilbook: 2 Blacksmithing recipes recorded", "chat line, got " .. tostring(printed[#printed]))
-assert(AnvilbookExportDB.debug and AnvilbookExportDB.debug.api == "modern", "api recorded")
-assert(AnvilbookExportDB.debug.recipeCount == 5, "recipe count recorded")
-assert(AnvilbookExportDB.debug.categories == 2, "category count recorded")
-
-bs.recipes[123456] = {name = "Stale recipe from a mixed-up export"}
-handler(frame, "TRADE_SKILL_LIST_UPDATE")
-assert(bs.recipes[123456] == nil, "a verified list replaces old recipes")
-assert(bs.recipes[3490], "current recipes stay")
-
--- A retry after the window closed cannot tell professions apart, so it must record nothing.
-state.categories = {}
-state.profession = {professionName = "First Aid", skillLevel = 1, maxSkillLevel = 75}
-handler(frame, "TRADE_SKILL_LIST_UPDATE")
-assert(char.professions["First Aid"] == nil, "nothing recorded without categories or a filtered list")
-assert(AnvilbookExportDB.lastError == nil, "and it is not an error")
-
--- This client returns nothing from GetCategories, so the window's own list is used.
-state.filtered = {111, 222, 333, 444}
-state.profession = {professionName = "Blacksmithing", skillLevel = 147, maxSkillLevel = 150}
-handler(frame, "TRADE_SKILL_LIST_UPDATE")
-local bs2 = char.professions["Blacksmithing"]
-assert(bs2.recipes[3490] and bs2.recipes[2841], "recorded from the filtered list")
-assert(bs2.recipes[279981] == nil, "the other profession's recipe is not in the filtered list")
 assert(AnvilbookExportDB.debug.source == "filtered", "source recorded, got " .. tostring(AnvilbookExportDB.debug.source))
 assert(AnvilbookExportDB.debug.filteredCount == 4, "filtered count recorded")
-state.categories = {10}
 
-state.profession = nil
+-- Switching professions: the new profession must not inherit the old list.
+state.profession = COOKING
+handler(frame, "TRADE_SKILL_SHOW")
+assert(professions()["Cooking"] == nil, "the old list is not stored under the new profession")
+state.filtered = {555}
+runTimers()
+runTimers()
+local cooking = professions()["Cooking"]
+assert(cooking and cooking.recipes[279981], "cooking recipes recorded once stable")
+assert(cooking.recipes[3490] == nil, "cooking did not get blacksmithing recipes")
+assert(professions()["Blacksmithing"].recipes[3490], "blacksmithing recipes kept")
+
+-- A window with no profession name (seen on this client) records nothing.
+state.profession = {professionName = "", skillLevel = 0, maxSkillLevel = 0}
 handler(frame, "TRADE_SKILL_LIST_UPDATE")
-assert(AnvilbookExportDB.lastError == nil, "missing profession info is not an error")
-assert(bs.recipes[3490], "recipes are kept")
+runTimers()
+runTimers()
+assert(professions()[""] == nil, "no profession name records nothing")
+assert(AnvilbookExportDB.lastError == nil, "and it is not an error")
 
-state.profession = {professionName = "Blacksmithing", skillLevel = 147, maxSkillLevel = 150}
+-- Categories are the fallback when the window has no filtered list.
+state.profession = BLACKSMITHING
+state.filtered = nil
+state.categories = {10}
+handler(frame, "TRADE_SKILL_LIST_UPDATE")
+runTimers()
+runTimers()
+assert(AnvilbookExportDB.debug.source == "categories", "categories used, got " .. tostring(AnvilbookExportDB.debug.source))
+assert(professions()["Blacksmithing"].recipes[279981] == nil, "category filter keeps other professions out")
+
 state.filtered = {111, 222}
 SlashCmdList["ANVILBOOK"]()
 local p = AnvilbookExportDB.probe

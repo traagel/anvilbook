@@ -85,7 +85,7 @@ assert(AnvilbookExportDB.lastError == nil, "a successful record clears the error
 
 state.skills[3].reagents[1][3] = "|cffffffff|Hitem:2838::|h[Heavy Stone]|h|r"
 table.remove(state.skills, 2)
-assert(#timers == 2, "SHOW schedules 2 retries")
+assert(#timers >= 1, "a retry is scheduled")
 runTimers()
 assert(state.expanded == 1, "a retry does not expand again")
 assert(bs.recipes[2871] and bs.recipes[2871].reagents[1].id == 2838, "cached recipe added by the retry")
