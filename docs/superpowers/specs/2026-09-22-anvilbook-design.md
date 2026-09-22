@@ -51,11 +51,17 @@ for charts. This follows `~/git/daytrade`.
 
 SQLite file at `~/.local/share/anvilbook/anvilbook.db`.
 
-- `scans(id INTEGER PK, file_mtime TEXT, imported_at TEXT, realm TEXT, file_hash TEXT UNIQUE)`
-- `prices(scan_id INTEGER, item_id INTEGER, min_price INTEGER, available INTEGER, day_high INTEGER, PRIMARY KEY(scan_id, item_id))`
+- `scans(id INTEGER PK, file_mtime TEXT, imported_at TEXT, realm TEXT, file_hash TEXT UNIQUE, scan_day INTEGER)`
+- `prices(scan_id INTEGER, item_id INTEGER, min_price INTEGER, available INTEGER, day_high INTEGER, day INTEGER, PRIMARY KEY(scan_id, item_id))`
+- `vendor_prices(item_id INTEGER PK, price INTEGER)`: latest Auctionator vendor cache.
 - `settings(key TEXT PK, value TEXT)` with JSON values.
 
 Item keys that are not plain item ids (for example keys with suffixes) are skipped.
+
+Auctionator keeps the last price of items that are no longer listed. `scan_day` is
+the latest day in the scan. A price row counts as listed only if its `day` equals
+`scan_day`. All reads (crafts, history, sell-through) use only listed rows. An item
+that is not listed has 0 available.
 
 ### items.py
 
@@ -75,7 +81,8 @@ The recursive cost logic from the prototype (`crafts.py`):
 - For each craftable recipe whose output has an AH price: net sale is the higher of
   AH price times (1 - AH cut) and the vendor sell price, times output amount.
 - Result per recipe: best path by profit per cast, with profit, casts, profit per
-  cast, profit per hour, listed count, and the path text.
+  cast, profit per hour, listed count, and the path text. Also the cheapest path
+  (highest profit per craft) with its profit, casts, and path text.
 - Filters: output required level at most `max_use_level`, and output listed count
   at least `min_listed`.
 
@@ -85,10 +92,15 @@ A background task in the FastAPI app. Every 5 seconds it checks the file mtime.
 If the mtime changed, it hashes the file and imports it when the hash is new.
 Errors are logged. The last good data stays in use.
 
+- A file with an empty price database is not stored. The status tells the user to
+  scan the AH and `/reload`.
+- After a decode error, the watcher tries the same file again on the next poll,
+  because WoW can be in the middle of a write.
+
 ### api.py
 
 - `GET /api/crafts`: craft table for the latest scan and current settings.
-- `GET /api/items/search?q=`: item names that have prices.
+- `GET /api/items/search?q=`: names of items that appear in any scan.
 - `GET /api/items/{id}/history`: min price, listed count, and time for each scan.
 - `GET /api/sellthrough?from=&to=`: per item, listed count and price in both scans,
   and the change. Defaults: the two latest scans.
