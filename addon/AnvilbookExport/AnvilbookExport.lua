@@ -207,6 +207,35 @@ local function run(event)
   end
 end
 
+-- Reports what the client's API returns, because it differs from retail and from classic.
+local function probe()
+  local api = C_TradeSkillUI or {}
+  local info = api.GetBaseProfessionInfo and api.GetBaseProfessionInfo()
+  local all = api.GetAllRecipeIDs and api.GetAllRecipeIDs() or {}
+  local okFiltered, filtered = pcall(api.GetFilteredRecipeIDs or function() end)
+  filtered = okFiltered and type(filtered) == "table" and filtered or nil
+  local _, categoryCount = categorySet(api)
+  local first = (filtered or all)[1]
+  local recipe = first and api.GetRecipeInfo and api.GetRecipeInfo(first)
+  local out = {
+    profession = info and info.professionName,
+    professionID = info and info.professionID,
+    allCount = #all,
+    filteredCount = filtered and #filtered,
+    categoryCount = categoryCount,
+    firstRecipe = recipe,
+    firstCategoryInfo = recipe and recipe.categoryID and api.GetCategoryInfo and api.GetCategoryInfo(recipe.categoryID),
+  }
+  AnvilbookExportDB = AnvilbookExportDB or {}
+  AnvilbookExportDB.probe = out
+  print(("Anvilbook probe: profession=%s all=%d filtered=%s categories=%s first=%s"):format(
+    tostring(out.profession), out.allCount, tostring(out.filteredCount), tostring(out.categoryCount),
+    tostring(recipe and recipe.name)))
+end
+
+SLASH_ANVILBOOK1 = "/anvilbook"
+SlashCmdList["ANVILBOOK"] = probe
+
 frame:SetScript("OnEvent", function(_, event) run(event) end)
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 -- Registering an event this client does not know raises an error.

@@ -65,6 +65,7 @@ function geterrorhandler() return function(e) errors[#errors + 1] = e end end
 function print(...) printed[#printed + 1] = table.concat({...}, " ") end
 time = os.time
 
+SlashCmdList = {}
 AnvilbookExportDB = {version = 1, characters = {["Stale - Realm"] = {professions = {}}}}
 assert(loadfile(arg[1]))("AnvilbookExport", {})
 assert(handler and registered.TRADE_SKILL_SHOW and registered.TRADE_SKILL_LIST_UPDATE, "events registered")
@@ -119,5 +120,13 @@ state.profession = nil
 handler(frame, "TRADE_SKILL_LIST_UPDATE")
 assert(AnvilbookExportDB.lastError == nil, "missing profession info is not an error")
 assert(bs.recipes[3490], "recipes are kept")
+
+state.profession = {professionName = "Blacksmithing", skillLevel = 147, maxSkillLevel = 150}
+state.filtered = {111, 222}
+SlashCmdList["ANVILBOOK"]()
+local p = AnvilbookExportDB.probe
+assert(p.profession == "Blacksmithing" and p.allCount == 5 and p.filteredCount == 2, "probe reports the API state")
+assert(p.firstRecipe.name == "Deadly Bronze Poniard", "probe includes the first recipe")
+assert(printed[#printed]:find("Anvilbook probe:"), "probe prints a line")
 
 io.write("OK\n")

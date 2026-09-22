@@ -51,6 +51,7 @@ local errors, printed = {}, {}
 function geterrorhandler() return function(e) errors[#errors + 1] = e end end
 function print(...) printed[#printed + 1] = table.concat({...}, " ") end
 time = os.time
+SlashCmdList = {}
 
 assert(loadfile(arg[1]))("AnvilbookExport", {})
 
