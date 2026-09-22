@@ -112,15 +112,18 @@ def test_character_can_be_selected(env, tmp_path):
     client, _ = env
     (tmp_path / 'AnvilbookExport.lua').write_bytes(SECOND_CHARACTER)
     client.post('/api/import')
-    assert [c['character'] for c in client.get('/api/characters').json()] == [
-        'Thordak - Classic Beta PvP', 'Eilistaree - Classic Beta PvP']
-    assert client.get('/api/status').json()['export']['character'] == 'Thordak - Classic Beta PvP'
+    chars = client.get('/api/characters').json()
+    assert [c['character'] for c in chars] == ['Thordak - Classic Beta PvP', 'Eilistaree - Classic Beta PvP']
+    assert chars[1]['maxRanks'] == {'Mining': 150}
+    status = client.get('/api/status').json()
+    assert (status['export']['character'], status['pinned']) == ('Thordak - Classic Beta PvP', None)
     assert [r['name'] for r in client.get('/api/crafts').json()] == ['Copper Bar']
 
     client.put('/api/settings', json={'character': 'Eilistaree - Classic Beta PvP'})
 
     status = client.get('/api/status').json()
     assert status['export']['character'] == 'Eilistaree - Classic Beta PvP'
+    assert status['pinned'] == 'Eilistaree - Classic Beta PvP'
     assert status['export']['professions'] == {'Mining': 40}
     # The database still knows a Blacksmithing recipe, but this character has no Blacksmithing.
     assert [r['name'] for r in client.get('/api/crafts').json()] == ['Tin Bar']

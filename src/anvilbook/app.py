@@ -68,7 +68,8 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
     def status():
         exp = game_export()
         summary = exp and {'character': exp.character, 'updated': exp.updated, 'professions': export_skills(exp)}
-        return {**importer.status, 'scans': len(store.scans()), 'export': summary}
+        return {**importer.status, 'scans': len(store.scans()), 'export': summary,
+                'pinned': store.settings()['character']}
 
     @app.post('/api/import')
     def do_import():
@@ -86,7 +87,8 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         except LuaParseError as e:
             log.warning('recipe export unreadable: %s', e)
             return []
-        return [{'character': e.character, 'updated': e.updated, 'professions': export_skills(e)} for e in found]
+        return [{'character': e.character, 'updated': e.updated, 'professions': export_skills(e),
+                 'maxRanks': {p: int(d.get('maxRank') or 0) for p, d in e.professions.items()}} for e in found]
 
     @app.get('/api/crafts')
     def crafts():

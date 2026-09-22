@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>anvilbook</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23b8860b'/><path d='M3 8.5h10l-2 3.5H5z' fill='%2316161a'/></svg>">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
 <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
 <style>
@@ -18,6 +19,20 @@ nav button { background:none; border:0; border-bottom:2px solid transparent; col
 nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #status { margin-left:auto; color:var(--muted); font-size:12px; }
 #status.error { color:var(--bad); }
+#who { display:flex; gap:1.5rem; align-items:flex-end; flex-wrap:wrap; padding:.5rem 1rem; border-bottom:1px solid var(--line); }
+#characters { display:flex; gap:.25rem; }
+#characters button { border:1px solid transparent; border-radius:2px; color:var(--muted); padding:.25rem .6rem; cursor:pointer; }
+#characters button[aria-pressed="true"] { color:var(--fg); border-color:var(--accent); }
+#professions { display:flex; gap:.25rem; flex-wrap:wrap; }
+#professions button { border:1px solid var(--line); border-radius:2px; background:none; color:var(--muted); cursor:pointer;
+  padding:.2rem .5rem .3rem; display:grid; gap:.2rem; justify-items:start; font-size:12px; line-height:1.2; }
+#professions button[aria-pressed="true"] { color:var(--fg); border-color:var(--accent); }
+#professions button:disabled { opacity:.45; cursor:default; }
+#professions .rank { color:var(--muted); }
+#professions .bar { width:100%; height:2px; background:var(--line); }
+#professions .bar i { display:block; height:2px; background:var(--accent); }
+#empty { color:var(--muted); padding:1rem 0; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 main { padding:1rem; }
 section { display:none; }
 section.active { display:block; }
@@ -50,14 +65,18 @@ input[type=text] { width:100%; max-width:40rem; }
     <button data-tab="sellthrough">Sell-through</button>
     <button data-tab="settings">Settings</button>
   </nav>
-  <select id="character" title="Whose recipes to use. Prices and history are shared."></select>
   <button id="import">Import now</button>
   <span id="status"></span>
+</header>
+<div id="who">
+  <div id="characters" role="group" aria-label="Character"></div>
+  <div id="professions" role="group" aria-label="Professions"></div>
 </header>
 <main>
   <section id="crafts" class="active">
     <p class="note">Best path by profit per cast. Click a row to see the cheapest path.</p>
     <div class="wrap"><table id="crafts-table"></table></div>
+    <p id="empty" hidden></p>
   </section>
   <section id="history">
     <input id="search" type="text" placeholder="Search an item" autocomplete="off">
@@ -138,8 +157,18 @@ const craftCols = [
   {key: 'listed', label: 'Listed'},
 ];
 
-async function loadCrafts() {
-  const rows = await api('/api/crafts');
+let crafts = [];
+let professionFilter = null;
+
+function showCrafts() {
+  const rows = professionFilter ? crafts.filter(r => r.profession === professionFilter) : crafts;
+  const empty = $('#empty');
+  empty.hidden = rows.length > 0;
+  if (!rows.length) {
+    empty.textContent = crafts.length
+      ? `Nothing in ${professionFilter} makes a profit in the latest scan.`
+      : 'No crafts yet. Scan the auction house and open a profession window, then /reload in game.';
+  }
   renderTable($('#crafts-table'), craftCols, rows, (r, tr) => {
     const next = tr.nextElementSibling;
     if (next && next.classList.contains('detail')) { next.remove(); return; }
@@ -150,6 +179,12 @@ async function loadCrafts() {
     td.textContent = `Best per cast: ${r.path}. Cheapest path: ${money(r.cheapest_profit)} profit in ` +
       `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}.`;
   });
+}
+
+async function loadCrafts() {
+  crafts = await api('/api/crafts');
+  showCrafts();
+  showProfessions();
 }
 
 let chart, searchTimer;
@@ -235,7 +270,6 @@ async function loadSettings() {
   };
   field('savedvariables_path', 'SavedVariables file', 'text');
   field('export_path', 'AnvilbookExport file (recipes from the game)', 'text');
-  field('character', 'Character (empty = the one that updated last)', 'text');
   field('realm', 'Realm (empty = first realm in the file)', 'text');
   field('skills', 'Profession caps (JSON)', 'json');
   field('skill_overrides', 'Forever recipe levels, item id to skill (JSON)', 'json');
@@ -267,41 +301,91 @@ async function loadSettings() {
   };
 }
 
-async function loadCharacters(selected) {
-  const chars = await api('/api/characters');
-  const sel = $('#character');
-  sel.innerHTML = '';
-  sel.add(new Option('Latest character', ''));
-  for (const c of chars) {
-    const professions = Object.entries(c.professions).map(([p, r]) => `${p} ${r}`).join(', ');
-    sel.add(new Option(`${c.character} (${professions})`, c.character));
-  }
-  sel.value = selected || '';
-  sel.style.display = chars.length ? '' : 'none';
+let characters = [];
+let pinned = null;
+let active = null;
+
+async function selectCharacter(name) {
+  pinned = name;
+  await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({character: name})});
+  professionFilter = null;
+  showCharacters();
+  loadCrafts();
 }
 
-$('#character').onchange = async e => {
-  await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
-                              body: JSON.stringify({character: e.target.value || null})});
-  loadCrafts();
-  loadSettings();
-};
+function showCharacters() {
+  const box = $('#characters');
+  box.innerHTML = '';
+  if (!characters.length) return;
+  const plate = (label, value, title) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute('aria-pressed', String(pinned === value));
+    b.onclick = () => selectCharacter(value);
+    box.appendChild(b);
+  };
+  for (const c of characters) {
+    plate(c.character.split(' - ')[0], c.character, c.character);
+  }
+  plate('Follow last played', null, 'Use whoever opened a profession window last');
+}
+
+function showProfessions() {
+  const box = $('#professions');
+  box.innerHTML = '';
+  const current = characters.find(c => c.character === active);
+  if (!current) return;
+  for (const [name, rank] of Object.entries(current.professions)) {
+    const count = crafts.filter(r => r.profession === name).length;
+    const b = document.createElement('button');
+    b.setAttribute('aria-pressed', String(professionFilter === name));
+    b.disabled = count === 0;
+    b.title = count ? `Show only ${name} crafts (${count})` : `No profitable ${name} crafts in the latest scan`;
+    b.onclick = () => {
+      professionFilter = professionFilter === name ? null : name;
+      showProfessions();
+      showCrafts();
+    };
+    const label = document.createElement('span');
+    label.textContent = name;
+    const rankLine = document.createElement('span');
+    rankLine.className = 'rank';
+    const max = (current.maxRanks || {})[name] || 150;
+    rankLine.textContent = `${rank} / ${max}`;
+    const bar = document.createElement('span');
+    bar.className = 'bar';
+    const fill = document.createElement('i');
+    fill.style.width = `${Math.min(100, rank / max * 100)}%`;
+    bar.appendChild(fill);
+    b.append(label, rankLine, bar);
+    box.appendChild(b);
+  }
+}
+
+async function loadCharacters(selectedName, pinnedName) {
+  characters = await api('/api/characters');
+  active = selectedName;
+  pinned = pinnedName;
+  showCharacters();
+  showProfessions();
+}
 
 let lastScans = null;
 async function refreshStatus() {
   try {
     const s = await api('/api/status');
     const el = $('#status');
-    const recipes = s.export
-      ? `Recipes from ${s.export.character}: ` + Object.entries(s.export.professions).map(([p, r]) => `${p} ${r}`).join(', ')
-      : 'No recipe export yet: open a profession window, then /reload';
-    el.textContent = (s.last_error || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`) + '. ' + recipes;
+    el.textContent = s.last_error
+      || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`
+      + (s.export ? '' : '. No recipes yet: open a profession window in game, then /reload');
     el.className = s.last_error ? 'error' : '';
-    const state = `${s.scans}:${s.export ? s.export.character + s.export.updated : ''}`;
+    const state = `${s.scans}:${s.pinned}:${s.export ? s.export.character + s.export.updated : ''}`;
     if (state !== lastScans) {
       lastScans = state;
+      await loadCharacters(s.export && s.export.character, s.pinned);
       loadCrafts();
-      loadCharacters(s.export && s.export.character);
       await loadScans();
       loadSellthrough();
     }
