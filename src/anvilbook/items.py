@@ -3,7 +3,7 @@ import urllib.request
 from pathlib import Path
 
 URL = 'https://raw.githubusercontent.com/nexus-devs/wow-classic-items/master/data/json/data.json'
-FIELDS = ('name', 'icon', 'quality', 'requiredLevel', 'sellPrice', 'vendorPrice', 'createdBy')
+FIELDS = ('name', 'icon', 'quality', 'requiredLevel', 'itemLevel', 'class', 'sellPrice', 'vendorPrice', 'createdBy')
 
 
 def load_items(cache: Path) -> dict[int, dict]:

@@ -86,6 +86,34 @@ def test_known_game_recipe_ignores_overrides_and_keeps_difficulty():
     assert db is not None and db.difficulty is None
 
 
+DE_TABLE = [{'quality': 'Uncommon', 'maxLevel': 25, 'weapon': [[10940, 1.0, 4]], 'armor': [[10940, 1.0, 1]]}]
+DAGGER = {3490: {'name': 'Bronze Dagger', 'quality': 'Uncommon', 'itemLevel': 20, 'class': 'Weapon',
+                 'createdBy': [recipe('Mining', 1, [(2841, 1)])]}}
+DE_PRICES = {**PRICES, 3490: {'min_price': 400, 'available': 100}, 10940: {'min_price': 200, 'available': 100}}
+
+
+def test_disenchant_beats_selling():
+    items = {**ITEMS, **DAGGER}
+    row_sell = row(Calculator(items, DE_PRICES, {}, settings()).rows(), 3490)
+    assert row_sell is not None
+    assert (row_sell.exit, row_sell.de_value) == ('sell', 0)
+    assert row_sell.revenue == pytest.approx(400 * 0.95)
+
+    with_de = settings(disenchanter=True, disenchant_table=DE_TABLE)
+    row_de = row(Calculator(items, DE_PRICES, {}, with_de).rows(), 3490)
+    assert row_de is not None
+    # 1.0 chance * 4 dust * 200c, less the auction cut, beats the 400c sale.
+    assert row_de.de_value == pytest.approx(800 * 0.95)
+    assert row_de.exit == 'disenchant'
+    assert row_de.revenue == pytest.approx(800 * 0.95)
+
+
+def test_disenchant_does_not_apply_to_materials():
+    with_de = settings(disenchanter=True, disenchant_table=DE_TABLE)
+    bronze = row(Calculator(ITEMS, DE_PRICES, {}, with_de).rows(), 2841)
+    assert bronze is not None and bronze.exit == 'sell' and bronze.de_value == 0
+
+
 def test_self_referencing_recipe_terminates():
     items = {1: {'name': 'Loop', 'createdBy': [recipe('Mining', 1, [(1, 1)])]}}
     prices = {1: {'min_price': 100, 'available': 10}}

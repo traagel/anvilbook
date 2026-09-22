@@ -13,7 +13,8 @@ def recipe(skill, reagents, amount=(1, 1)):
 
 
 ITEMS = [
-    {'itemId': 3490, 'name': 'Deadly Bronze Poniard', 'requiredLevel': 20,
+    {'itemId': 3490, 'name': 'Deadly Bronze Poniard', 'requiredLevel': 20, 'quality': 'Uncommon',
+     'itemLevel': 25, 'class': 'Weapon',
      'createdBy': [{'amount': [1, 1], 'requiredSkill': 100, 'category': 'Blacksmithing',
                     'reagents': [{'itemId': 2841, 'amount': 4}]}]},
     {'itemId': 2770, 'name': 'Copper Ore'},
@@ -127,6 +128,20 @@ def test_character_can_be_selected(env, tmp_path):
     assert status['export']['professions'] == {'Mining': 40}
     # The database still knows a Blacksmithing recipe, but this character has no Blacksmithing.
     assert [r['name'] for r in client.get('/api/crafts').json()] == ['Tin Bar']
+
+
+def test_disenchant_needs_enchanting_or_the_assume_switch(env):
+    client, _ = env
+    client.post('/api/import')
+    poniard = lambda: next(r for r in client.get('/api/crafts').json() if r['item_id'] == 3490)
+    assert (poniard()['exit'], poniard()['de_value']) == ('sell', 0)
+
+    client.put('/api/settings', json={
+        'assume_enchanter': True,
+        'disenchant_table': [{'quality': 'Uncommon', 'maxLevel': 25, 'weapon': [[2841, 1.0, 100]], 'armor': []}]})
+
+    assert poniard()['exit'] == 'disenchant'
+    assert poniard()['de_value'] == pytest.approx(100 * 220 * 0.95)
 
 
 def test_crafts_use_game_recipes(env, tmp_path):

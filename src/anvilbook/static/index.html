@@ -32,6 +32,7 @@ nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #professions .bar { width:100%; height:2px; background:var(--line); }
 #professions .bar i { display:block; height:2px; background:var(--accent); }
 #empty { color:var(--muted); padding:1rem 0; }
+#enchanter-box { margin:0 0 .2rem; color:var(--muted); font-size:12px; display:flex; gap:.3rem; align-items:center; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 main { padding:1rem; }
 section { display:none; }
@@ -71,6 +72,7 @@ input[type=text] { width:100%; max-width:40rem; }
 <div id="who">
   <div id="characters" role="group" aria-label="Character"></div>
   <div id="professions" role="group" aria-label="Professions"></div>
+  <label id="enchanter-box"><input type="checkbox" id="enchanter"> Assume enchanter</label>
 </header>
 <main>
   <section id="crafts" class="active">
@@ -151,6 +153,8 @@ const craftCols = [
   {key: 'cost', label: 'Cost', fmt: money},
   {key: 'revenue', label: 'Net sale', fmt: money},
   {key: 'profit', label: 'Profit', fmt: money},
+  {key: 'exit', label: 'Exit', cls: (v) => v === 'disenchant' ? 'd-optimal' : ''},
+  {key: 'de_value', label: 'Disenchant', fmt: v => v ? money(v) : ''},
   {key: 'casts', label: 'Casts', fmt: v => v.toFixed(1)},
   {key: 'per_cast', label: 'Per cast', fmt: money},
   {key: 'per_hour', label: 'Per hour', fmt: money},
@@ -252,8 +256,15 @@ async function loadSellthrough() {
 $('#st-from').onchange = loadSellthrough;
 $('#st-to').onchange = loadSellthrough;
 
+$('#enchanter').onchange = async e => {
+  await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({assume_enchanter: e.target.checked})});
+  loadCrafts();
+};
+
 async function loadSettings() {
   const s = await api('/api/settings');
+  $('#enchanter').checked = !!s.assume_enchanter;
   const f = $('#settings-form');
   f.innerHTML = '';
   const field = (key, label, type) => {
@@ -273,6 +284,8 @@ async function loadSettings() {
   field('realm', 'Realm (empty = first realm in the file)', 'text');
   field('skills', 'Profession caps (JSON)', 'json');
   field('skill_overrides', 'Forever recipe levels, item id to skill (JSON)', 'json');
+  field('disenchant_table', 'Disenchant yields, chance and average count (JSON)', 'json');
+  field('min_disenchant_samples', 'Measured disenchants needed before they replace the table', 'number');
   field('max_use_level', 'Max use level', 'number');
   field('min_listed', 'Min listed', 'number');
   field('min_scan_items', 'Min items seen for a save to count as a full scan', 'number');

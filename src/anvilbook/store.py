@@ -4,6 +4,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .disenchant import DEFAULT_TABLE
 from .importer import Snapshot
 
 WOW_SAVEDVARIABLES = (
@@ -23,6 +24,9 @@ DEFAULT_SETTINGS = {
     'min_scan_items': 100,
     'cast_seconds': 3,
     'ah_cut': 0.05,
+    'assume_enchanter': False,
+    'disenchant_table': DEFAULT_TABLE,
+    'min_disenchant_samples': 20,
 }
 
 SCHEMA = '''

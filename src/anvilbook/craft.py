@@ -1,5 +1,7 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import product
+
+from .disenchant import expected_value
 
 # Deep enough for ore -> bar -> alloy -> item; also stops recipe cycles.
 MAX_DEPTH = 3
@@ -15,6 +17,8 @@ class CraftSettings:
     min_listed: int
     cast_seconds: float
     ah_cut: float
+    disenchanter: bool = False
+    disenchant_table: list[dict] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, s: dict) -> 'CraftSettings':
@@ -25,6 +29,7 @@ class CraftSettings:
             min_listed=int(s['min_listed']),
             cast_seconds=float(s['cast_seconds']),
             ah_cut=float(s['ah_cut']),
+            disenchant_table=list(s.get('disenchant_table') or []),
         )
 
 
@@ -46,6 +51,8 @@ class CraftRow:
     cheapest_casts: float
     cheapest_path: str
     difficulty: str | None = None
+    de_value: float = 0
+    exit: str = 'sell'
 
 
 def pareto(opts: list[Option]) -> list[Option]:
@@ -79,6 +86,13 @@ class Calculator:
         vendor = self.vendor.get(item_id) or (self.items.get(item_id) or {}).get('vendorPrice')
         found = [p for p in (ah, vendor) if p]
         return min(found) if found else None
+
+    def disenchant_value(self, item: dict) -> float:
+        if not self.s.disenchanter:
+            return 0
+        prices = {i: p['min_price'] for i, p in self.prices.items()}
+        return expected_value(self.s.disenchant_table, prices, item.get('quality'),
+                              item.get('itemLevel') or 0, item.get('class'), self.s.ah_cut)
 
     def options(self, item_id: int, depth: int = 0) -> list[Option]:
         key = (item_id, depth)
@@ -119,7 +133,9 @@ class Calculator:
                 if not self.can_craft(item_id, recipe):
                     continue
                 n = sum(recipe['amount']) / 2
-                revenue = max(price['min_price'] * (1 - self.s.ah_cut), item.get('sellPrice') or 0) * n
+                sale = max(price['min_price'] * (1 - self.s.ah_cut), item.get('sellPrice') or 0)
+                de_value = self.disenchant_value(item)
+                revenue = max(sale, de_value) * n
                 opts = self.recipe_options(recipe, 0)
                 if not opts:
                     continue
@@ -132,6 +148,6 @@ class Calculator:
                     item_id, item['name'], recipe.get('category'), self.skill(item_id, recipe),
                     cost, revenue, revenue - cost, casts, per_cast, per_cast * 3600 / self.s.cast_seconds,
                     price['available'], path, revenue - cheap_cost, cheap_casts, cheap_path,
-                    recipe.get('difficulty')))
+                    recipe.get('difficulty'), de_value, 'disenchant' if de_value > sale else 'sell'))
         out.sort(key=lambda r: -r.per_hour)
         return out

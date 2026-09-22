@@ -95,13 +95,15 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         scan_id = store.latest_scan_id()
         if scan_id is None:
             return []
-        settings = CraftSettings.from_dict(store.settings())
+        stored = store.settings()
+        settings = CraftSettings.from_dict(stored)
         known = items()
         exp = game_export()
         if exp:
             known = merge(known, exp)
             # The character can only craft what the game reported for them.
             settings.skills = export_skills(exp)
+        settings.disenchanter = bool(stored['assume_enchanter']) or 'Enchanting' in settings.skills
         calc = Calculator(known, store.prices(scan_id), store.vendor_prices(), settings)
         return [asdict(r) for r in calc.rows()]
 
