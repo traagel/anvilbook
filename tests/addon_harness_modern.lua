@@ -138,6 +138,34 @@ runTimers()
 assert(AnvilbookExportDB.debug.source == "categories", "categories used, got " .. tostring(AnvilbookExportDB.debug.source))
 assert(professions()["Blacksmithing"].recipes[279981] == nil, "category filter keeps other professions out")
 
+-- Disenchanting: the cast names the item, the loot window holds the result.
+known.UNIT_SPELLCAST_SENT = true
+known.LOOT_OPENED = true
+C_Container = {
+  GetContainerNumSlots = function(bag) return bag == 0 and 2 or 0 end,
+  GetContainerItemID = function(bag, slot) return bag == 0 and slot == 2 and 3490 or nil end,
+}
+C_Item.GetItemInfo = function(id)
+  if id == 3490 then return "Deadly Bronze Poniard", "link", 2, 25 end
+  return "Strange Dust", "link", 1, 5
+end
+C_Item.GetItemInfoInstant = function() return 3490, "Weapon", "Dagger", "INVTYPE_WEAPON", 0, 2, 15 end
+local loot = {{id = 10940, count = 3}}
+function GetNumLootItems() return #loot end
+function GetLootSlotLink(i) return "|cffffffff|Hitem:" .. loot[i].id .. "::|h[Mat]|h|r" end
+function GetLootSlotInfo(i) return "icon", "Strange Dust", loot[i].count, nil, 2 end
+
+handler(frame, "UNIT_SPELLCAST_SENT", "player", "Deadly Bronze Poniard", "cast-1", 13262)
+handler(frame, "LOOT_OPENED")
+local de = AnvilbookExportDB.disenchants
+assert(de and #de == 1, "one disenchant recorded, got " .. tostring(de and #de))
+assert(de[1].item.id == 3490 and de[1].item.quality == 2 and de[1].item.itemLevel == 25, "item recorded")
+assert(de[1].item.kind == "Weapon", "weapon or armor recorded, got " .. tostring(de[1].item.kind))
+assert(de[1].mats[1].id == 10940 and de[1].mats[1].count == 3, "materials recorded")
+
+handler(frame, "LOOT_OPENED")
+assert(#AnvilbookExportDB.disenchants == 1, "loot without a disenchant cast is ignored")
+
 state.filtered = {111, 222}
 SlashCmdList["ANVILBOOK"]()
 local p = AnvilbookExportDB.probe

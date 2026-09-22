@@ -93,6 +93,10 @@ input[type=text] { width:100%; max-width:40rem; }
     <div class="wrap"><table id="st-table"></table></div>
   </section>
   <section id="settings">
+    <h3>Measured disenchants</h3>
+    <p class="note">Results recorded in game. A group replaces the table below once it has enough samples.</p>
+    <div class="wrap"><table id="de-table"></table></div>
+    <h3>Settings</h3>
     <form id="settings-form"></form>
   </section>
 </main>
@@ -262,7 +266,26 @@ $('#enchanter').onchange = async e => {
   loadCrafts();
 };
 
+async function loadDisenchants() {
+  const rows = await api('/api/disenchants');
+  const table = $('#de-table');
+  if (!rows.length) {
+    table.innerHTML = '<tr><td>Nothing recorded yet. Disenchant an item in game, then /reload.</td></tr>';
+    return;
+  }
+  renderTable(table, [
+    {key: 'quality', label: 'Quality'},
+    {key: 'maxLevel', label: 'Up to item level'},
+    {key: 'kind', label: 'Type'},
+    {key: 'samples', label: 'Disenchants'},
+    {key: 'used', label: 'In use', fmt: v => v ? 'yes' : 'not enough'},
+    {key: 'yields', label: 'Result',
+     fmt: v => v.map(y => `${y.name} ${(y.chance * 100).toFixed(0)}% x${y.quantity.toFixed(1)}`).join(', ')},
+  ], rows);
+}
+
 async function loadSettings() {
+  loadDisenchants();
   const s = await api('/api/settings');
   $('#enchanter').checked = !!s.assume_enchanter;
   const f = $('#settings-form');

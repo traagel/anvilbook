@@ -144,6 +144,35 @@ def test_disenchant_needs_enchanting_or_the_assume_switch(env):
     assert poniard()['de_value'] == pytest.approx(100 * 220 * 0.95)
 
 
+MEASURED = b'''
+AnvilbookExportDB = {
+["disenchants"] = {
+{ ["time"] = 1, ["item"] = { ["id"] = 3490, ["quality"] = 2, ["itemLevel"] = 25, ["kind"] = "Weapon", },
+  ["mats"] = { { ["id"] = 2841, ["count"] = 4, }, }, }, -- [1]
+{ ["time"] = 2, ["item"] = { ["id"] = 3490, ["quality"] = 2, ["itemLevel"] = 25, ["kind"] = "Weapon", },
+  ["mats"] = { { ["id"] = 2841, ["count"] = 6, }, }, }, -- [2]
+},
+}
+'''
+
+
+def test_measured_disenchants_replace_the_table(env, tmp_path):
+    client, _ = env
+    (tmp_path / 'AnvilbookExport.lua').write_bytes(MEASURED)
+    client.post('/api/import')
+    client.put('/api/settings', json={
+        'assume_enchanter': True, 'min_disenchant_samples': 2,
+        'disenchant_table': [{'quality': 'Uncommon', 'maxLevel': 25, 'weapon': [[2841, 1.0, 1]], 'armor': []}]})
+
+    measured = client.get('/api/disenchants').json()
+    assert measured == [{'quality': 'Uncommon', 'maxLevel': 25, 'kind': 'weapon', 'samples': 2,
+                         'yields': [{'item_id': 2841, 'name': 'Bronze Bar', 'chance': 1.0, 'quantity': 5.0}],
+                         'used': True}]
+
+    poniard = next(r for r in client.get('/api/crafts').json() if r['item_id'] == 3490)
+    assert poniard['de_value'] == pytest.approx(5 * 220 * 0.95)
+
+
 def test_crafts_use_game_recipes(env, tmp_path):
     client, _ = env
     (tmp_path / 'AnvilbookExport.lua').write_bytes(GAME_EXPORT)

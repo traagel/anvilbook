@@ -219,6 +219,59 @@ local function run(event, attempt)
   end
 end
 
+local DISENCHANT_SPELL = 13262
+local DISENCHANT_LOG_LIMIT = 500
+local KINDS = {[2] = "Weapon", [4] = "Armor"}
+local pendingDisenchant
+
+local function bagItem(name)
+  local containers = C_Container or _G
+  local numSlots = containers.GetContainerNumSlots or GetContainerNumSlots
+  local itemIdAt = containers.GetContainerItemID or GetContainerItemID
+  if not numSlots or not itemIdAt then
+    return nil
+  end
+  for bag = 0, 4 do
+    for slot = 1, (numSlots(bag) or 0) do
+      local id = itemIdAt(bag, slot)
+      local info = C_Item and C_Item.GetItemInfo or GetItemInfo
+      local itemName, quality, itemLevel
+      if id and info then
+        -- An `and` chain would keep only the first return value.
+        itemName, _, quality, itemLevel = info(id)
+      end
+      if itemName == name then
+        local classID = select(6, C_Item.GetItemInfoInstant(id))
+        return {id = id, name = itemName, quality = quality, itemLevel = itemLevel, kind = KINDS[classID]}
+      end
+    end
+  end
+end
+
+local function recordDisenchant()
+  local item = pendingDisenchant
+  pendingDisenchant = nil
+  if not item then
+    return
+  end
+  local mats = {}
+  for slot = 1, (GetNumLootItems and GetNumLootItems() or 0) do
+    local link = GetLootSlotLink and GetLootSlotLink(slot)
+    local id = itemId(link)
+    local count = select(3, GetLootSlotInfo(slot))
+    if id then
+      mats[#mats + 1] = {id = id, count = count or 1}
+    end
+  end
+  AnvilbookExportDB = AnvilbookExportDB or {}
+  local log = AnvilbookExportDB.disenchants or {}
+  AnvilbookExportDB.disenchants = log
+  log[#log + 1] = {time = time(), item = item, mats = mats}
+  while #log > DISENCHANT_LOG_LIMIT do
+    table.remove(log, 1)
+  end
+end
+
 -- Reports what the client's API returns, because it differs from retail and from classic.
 local function probe()
   local api = C_TradeSkillUI or {}
@@ -248,9 +301,26 @@ end
 SLASH_ANVILBOOK1 = "/anvilbook"
 SlashCmdList["ANVILBOOK"] = probe
 
-frame:SetScript("OnEvent", function(_, event) run(event) end)
+frame:SetScript("OnEvent", function(_, event, ...)
+  if event == "UNIT_SPELLCAST_SENT" then
+    local unit, target, _, spellID = ...
+    if unit == "player" and spellID == DISENCHANT_SPELL then
+      pendingDisenchant = bagItem(target)
+    end
+    return
+  end
+  if event == "LOOT_OPENED" then
+    local ok, err = pcall(recordDisenchant)
+    if not ok then
+      geterrorhandler()(err)
+    end
+    return
+  end
+  run(event)
+end)
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 -- Registering an event this client does not know raises an error.
-for _, event in ipairs({"TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED"}) do
+for _, event in ipairs({"TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
+                        "UNIT_SPELLCAST_SENT", "LOOT_OPENED"}) do
   pcall(frame.RegisterEvent, frame, event)
 end

@@ -29,6 +29,64 @@ DEFAULT_TABLE = [
 ]
 
 
+QUALITY_NAMES = {2: 'Uncommon', 3: 'Rare', 4: 'Epic'}
+
+
+def parse_records(db: dict) -> list[dict]:
+    saved = db.get('disenchants') if isinstance(db, dict) else None
+    if isinstance(saved, dict):
+        return [saved[k] for k in sorted(saved)]
+    return list(saved or [])
+
+
+def _bucket(table: list[dict], quality, item_level: int, kind: str):
+    name = QUALITY_NAMES.get(quality, quality)
+    key = KINDS.get(str(kind))
+    if not key:
+        return None
+    for row in sorted(table, key=lambda r: r['maxLevel']):
+        if row.get('quality') == name and item_level <= row['maxLevel']:
+            return name, row['maxLevel'], key
+    return None
+
+
+def observed(table: list[dict], records: list[dict]) -> dict[tuple, dict]:
+    """Chance and average count for each material, measured from real disenchants."""
+    counts: dict[tuple, dict] = {}
+    for record in records:
+        item = record.get('item') or {}
+        bucket = _bucket(table, item.get('quality'), int(item.get('itemLevel') or 0), item.get('kind'))
+        if not bucket:
+            continue
+        stats = counts.setdefault(bucket, {'samples': 0, 'mats': {}})
+        stats['samples'] += 1
+        mats = record.get('mats') or {}
+        for mat in (mats.values() if isinstance(mats, dict) else mats):
+            got = stats['mats'].setdefault(int(mat['id']), [0, 0])
+            got[0] += 1
+            got[1] += int(mat.get('count') or 1)
+    out = {}
+    for bucket, stats in counts.items():
+        out[bucket] = {'samples': stats['samples'],
+                       'yields': [(item_id, times / stats['samples'], total / times)
+                                  for item_id, (times, total) in stats['mats'].items()]}
+    return out
+
+
+def effective_table(table: list[dict], records: list[dict], min_samples: int) -> list[dict]:
+    """The configured table, with each well-sampled bucket replaced by measured yields."""
+    buckets = observed(table, records)
+    out = []
+    for row in table:
+        row = dict(row)
+        for key in KINDS.values():
+            measured = buckets.get((row.get('quality'), row['maxLevel'], key))
+            if measured and measured['samples'] >= min_samples:
+                row[key] = [[i, chance, qty] for i, chance, qty in measured['yields']]
+        out.append(row)
+    return out
+
+
 def yields(table: list[dict], quality: str, item_level: int, kind: str) -> list[tuple[int, float, float]]:
     key = KINDS.get(str(kind))
     if not key:

@@ -10,8 +10,9 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from .craft import Calculator, CraftSettings
+from .disenchant import effective_table, observed, parse_records
 from .items import load_items
-from .luatable import LuaParseError
+from .luatable import LuaParseError, parse_savedvariables
 from .recipes import GameExport, export_skills, load_export, load_exports, merge
 from .store import Store
 from .watcher import Importer
@@ -41,6 +42,14 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         except LuaParseError as e:
             log.warning('recipe export unreadable: %s', e)
             return None
+
+    def disenchant_records() -> list[dict]:
+        path = Path(store.settings()['export_path']).expanduser()
+        try:
+            db = parse_savedvariables(path.read_bytes()).get('AnvilbookExportDB')
+        except (FileNotFoundError, LuaParseError):
+            return []
+        return parse_records(db if isinstance(db, dict) else {})
 
     async def watch_loop() -> None:
         while True:
@@ -104,6 +113,8 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
             # The character can only craft what the game reported for them.
             settings.skills = export_skills(exp)
         settings.disenchanter = bool(stored['assume_enchanter']) or 'Enchanting' in settings.skills
+        settings.disenchant_table = effective_table(settings.disenchant_table, disenchant_records(),
+                                                    int(stored['min_disenchant_samples']))
         calc = Calculator(known, store.prices(scan_id), store.vendor_prices(), settings)
         return [asdict(r) for r in calc.rows()]
 
@@ -134,6 +145,21 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         for r in rows:
             r['name'] = (known.get(r['item_id']) or {}).get('name') or str(r['item_id'])
         return {'from': from_id, 'to': to_id, 'rows': rows}
+
+    @app.get('/api/disenchants')
+    def disenchants():
+        stored = store.settings()
+        known = items()
+        minimum = int(stored['min_disenchant_samples'])
+        out = []
+        for (quality, max_level, kind), data in observed(stored['disenchant_table'], disenchant_records()).items():
+            out.append({
+                'quality': quality, 'maxLevel': max_level, 'kind': kind, 'samples': data['samples'],
+                'used': data['samples'] >= minimum,
+                'yields': [{'item_id': i, 'name': (known.get(i) or {}).get('name') or str(i),
+                            'chance': chance, 'quantity': qty} for i, chance, qty in data['yields']],
+            })
+        return sorted(out, key=lambda r: (r['quality'], r['maxLevel'], r['kind']))
 
     @app.get('/api/settings')
     def get_settings():
