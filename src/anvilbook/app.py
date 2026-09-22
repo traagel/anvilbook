@@ -98,7 +98,8 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         exp = game_export()
         if exp:
             known = merge(known, exp)
-            settings.skills = {**settings.skills, **export_skills(exp)}
+            # The character can only craft what the game reported for them.
+            settings.skills = export_skills(exp)
         calc = Calculator(known, store.prices(scan_id), store.vendor_prices(), settings)
         return [asdict(r) for r in calc.rows()]
 

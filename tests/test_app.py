@@ -13,13 +13,16 @@ def recipe(skill, reagents, amount=(1, 1)):
 
 
 ITEMS = [
+    {'itemId': 3490, 'name': 'Deadly Bronze Poniard', 'requiredLevel': 20,
+     'createdBy': [{'amount': [1, 1], 'requiredSkill': 100, 'category': 'Blacksmithing',
+                    'reagents': [{'itemId': 2841, 'amount': 4}]}]},
     {'itemId': 2770, 'name': 'Copper Ore'},
     {'itemId': 2771, 'name': 'Tin Ore'},
     {'itemId': 2840, 'name': 'Copper Bar', 'createdBy': [recipe(1, [(2770, 1)])]},
     {'itemId': 3576, 'name': 'Tin Bar', 'createdBy': [recipe(65, [(2771, 1)])]},
     {'itemId': 2841, 'name': 'Bronze Bar', 'createdBy': [recipe(65, [(2840, 1), (3576, 1)], (2, 2))]},
 ]
-PRICES = {2770: 57, 2771: 200, 2840: 73, 3576: 248, 2841: 220}
+PRICES = {2770: 57, 2771: 200, 2840: 73, 3576: 248, 2841: 220, 3490: 17500}
 
 
 @pytest.fixture
@@ -119,6 +122,7 @@ def test_character_can_be_selected(env, tmp_path):
     status = client.get('/api/status').json()
     assert status['export']['character'] == 'Eilistaree - Classic Beta PvP'
     assert status['export']['professions'] == {'Mining': 40}
+    # The database still knows a Blacksmithing recipe, but this character has no Blacksmithing.
     assert [r['name'] for r in client.get('/api/crafts').json()] == ['Tin Bar']
 
 
@@ -137,8 +141,8 @@ def test_crafts_use_game_recipes(env, tmp_path):
 def test_search_and_history(env):
     client, _ = env
     client.post('/api/import')
-    hits = client.get('/api/items/search', params={'q': 'bron'}).json()
-    assert [h['item_id'] for h in hits] == [2841]
+    hits = client.get('/api/items/search', params={'q': 'bronze'}).json()
+    assert [h['item_id'] for h in hits] == [2841, 3490]
     points = client.get('/api/items/2841/history').json()['points']
     assert [(p['min_price'], p['available']) for p in points] == [(220, 100)]
     assert client.get('/api/items/999999/history').status_code == 404
