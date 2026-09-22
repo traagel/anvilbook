@@ -1,5 +1,5 @@
 -- Bumped when a fix makes older saved data wrong; it is then thrown away.
-local VERSION = 2
+local VERSION = 3
 
 local frame = CreateFrame("Frame")
 local busy = false
@@ -68,11 +68,17 @@ local function modernRecipes(db)
   local categories, categoryCount = categorySet(api)
   local debug = {api = "modern", recipeCount = #ids, professionInfo = info, categories = categoryCount}
   db.debug = debug
+  -- Without categories the recipes of every profession look alike, and a retry
+  -- after the window closed would file them all under the wrong profession.
+  if not categories then
+    debug.skipped = "no categories"
+    return nil
+  end
   local basic = Enum and Enum.CraftingReagentType and Enum.CraftingReagentType.Basic
   local recipes, recorded = {}, 0
   for _, recipeID in ipairs(ids) do
     local recipe = api.GetRecipeInfo(recipeID)
-    local mine = recipe and (not categories or not recipe.categoryID or categories[recipe.categoryID])
+    local mine = recipe and recipe.categoryID and categories[recipe.categoryID]
     local schematic = mine and recipe.learned and api.GetRecipeSchematic(recipeID, false)
     local outputId = schematic and schematic.outputItemID
     if outputId and outputId ~= 0 then
@@ -94,7 +100,7 @@ local function modernRecipes(db)
       end
     end
   end
-  return profession, info.skillLevel, info.maxSkillLevel, recipes, recorded, categories ~= nil
+  return profession, info.skillLevel, info.maxSkillLevel, recipes, recorded, true
 end
 
 local function classicRecipes(db, expand)

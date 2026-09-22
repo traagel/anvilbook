@@ -94,6 +94,16 @@ handler(frame, "TRADE_SKILL_LIST_UPDATE")
 assert(bs.recipes[123456] == nil, "a verified list replaces old recipes")
 assert(bs.recipes[3490], "current recipes stay")
 
+-- A retry after the window closed cannot tell professions apart, so it must record nothing.
+local categories = C_TradeSkillUI.GetCategories
+C_TradeSkillUI.GetCategories = function() return {} end
+state.profession = {professionName = "First Aid", skillLevel = 1, maxSkillLevel = 75}
+handler(frame, "TRADE_SKILL_LIST_UPDATE")
+assert(char.professions["First Aid"] == nil, "nothing recorded without categories")
+assert(AnvilbookExportDB.lastError == nil, "and it is not an error")
+C_TradeSkillUI.GetCategories = categories
+state.profession = {professionName = "Blacksmithing", skillLevel = 147, maxSkillLevel = 150}
+
 state.profession = nil
 handler(frame, "TRADE_SKILL_LIST_UPDATE")
 assert(AnvilbookExportDB.lastError == nil, "missing profession info is not an error")
