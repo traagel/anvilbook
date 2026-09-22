@@ -1,1 +1,294 @@
-<!doctype html><title>anvilbook</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>anvilbook</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
+<style>
+:root { --bg:#fff; --fg:#1b1b1f; --muted:#6b6b76; --line:#e3e3e8; --accent:#b8860b; --bad:#c0392b; --good:#2e8b57; --series2:#4a78c2; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16161a; --fg:#e8e8ee; --muted:#9a9aa6; --line:#2c2c33; --accent:#e0b04a; --bad:#e06c5c; --good:#5cbf8a; --series2:#7aa2e8; }
+}
+body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+header { display:flex; gap:1rem; align-items:center; padding:.6rem 1rem; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+header h1 { font-size:1rem; margin:0; color:var(--accent); }
+nav button { background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); padding:.3rem .6rem; cursor:pointer; font:inherit; }
+nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
+#status { margin-left:auto; color:var(--muted); font-size:12px; }
+#status.error { color:var(--bad); }
+main { padding:1rem; }
+section { display:none; }
+section.active { display:block; }
+.wrap { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; }
+th, td { padding:.3rem .5rem; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; }
+th { cursor:pointer; user-select:none; color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--bg); }
+tbody tr { cursor:pointer; }
+tr.detail td { text-align:left; white-space:normal; color:var(--muted); }
+.pos { color:var(--good); }
+.neg { color:var(--bad); }
+.note { color:var(--muted); font-size:12px; margin:.5rem 0; }
+label { display:block; margin:.6rem 0; }
+input, textarea, select, button { font:inherit; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:.3rem .5rem; }
+textarea { display:block; width:100%; max-width:40rem; height:6rem; font-family:monospace; }
+input[type=text] { width:100%; max-width:40rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>anvilbook</h1>
+  <nav>
+    <button data-tab="crafts" class="active">Crafts</button>
+    <button data-tab="history">History</button>
+    <button data-tab="sellthrough">Sell-through</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <button id="import">Import now</button>
+  <span id="status"></span>
+</header>
+<main>
+  <section id="crafts" class="active">
+    <p class="note">Best path by profit per cast. Click a row to see the cheapest path.</p>
+    <div class="wrap"><table id="crafts-table"></table></div>
+  </section>
+  <section id="history">
+    <input id="search" type="text" placeholder="Search an item" autocomplete="off">
+    <select id="search-results"></select>
+    <h3 id="history-title"></h3>
+    <div id="chart"></div>
+  </section>
+  <section id="sellthrough">
+    <label>From <select id="st-from"></select></label>
+    <label>To <select id="st-to"></select></label>
+    <p class="note">A drop in listed count means sales or expired auctions. Green: fewer listed (selling).</p>
+    <div class="wrap"><table id="st-table"></table></div>
+  </section>
+  <section id="settings">
+    <form id="settings-form"></form>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+function money(c) {
+  if (c == null) return '';
+  const sign = c < 0 ? '-' : '';
+  c = Math.round(Math.abs(c));
+  const g = Math.floor(c / 10000), s = Math.floor(c / 100) % 100, cu = String(c % 100).padStart(2, '0');
+  return sign + (g ? `${g}g ${String(s).padStart(2, '0')}s ${cu}c` : `${s}s ${cu}c`);
+}
+
+function renderTable(el, cols, rows, onRowClick) {
+  const key = el.dataset.sortKey, dir = Number(el.dataset.sortDir || -1);
+  const sorted = key ? [...rows].sort((a, b) => {
+    const x = a[key] ?? -Infinity, y = b[key] ?? -Infinity;
+    return (x > y ? 1 : x < y ? -1 : 0) * dir;
+  }) : rows;
+  el.innerHTML = '';
+  const head = el.createTHead().insertRow();
+  for (const c of cols) {
+    const th = document.createElement('th');
+    th.textContent = c.label + (c.key === key ? (dir > 0 ? ' ▲' : ' ▼') : '');
+    th.onclick = () => {
+      el.dataset.sortDir = c.key === key ? -dir : -1;
+      el.dataset.sortKey = c.key;
+      renderTable(el, cols, rows, onRowClick);
+    };
+    head.appendChild(th);
+  }
+  const body = el.createTBody();
+  for (const r of sorted) {
+    const tr = body.insertRow();
+    for (const c of cols) {
+      const td = tr.insertCell();
+      td.textContent = c.fmt ? c.fmt(r[c.key], r) : (r[c.key] ?? '');
+      if (c.cls) td.className = c.cls(r[c.key], r);
+    }
+    if (onRowClick) tr.onclick = () => onRowClick(r, tr);
+  }
+}
+
+const craftCols = [
+  {key: 'name', label: 'Item'},
+  {key: 'profession', label: 'Profession'},
+  {key: 'skill', label: 'Skill'},
+  {key: 'cost', label: 'Cost', fmt: money},
+  {key: 'revenue', label: 'Net sale', fmt: money},
+  {key: 'profit', label: 'Profit', fmt: money},
+  {key: 'casts', label: 'Casts', fmt: v => v.toFixed(1)},
+  {key: 'per_cast', label: 'Per cast', fmt: money},
+  {key: 'per_hour', label: 'Per hour', fmt: money},
+  {key: 'listed', label: 'Listed'},
+];
+
+async function loadCrafts() {
+  const rows = await api('/api/crafts');
+  renderTable($('#crafts-table'), craftCols, rows, (r, tr) => {
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains('detail')) { next.remove(); return; }
+    const d = tr.parentNode.insertRow(tr.sectionRowIndex + 1);
+    d.className = 'detail';
+    const td = d.insertCell();
+    td.colSpan = craftCols.length;
+    td.textContent = `Best per cast: ${r.path}. Cheapest path: ${money(r.cheapest_profit)} profit in ` +
+      `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}.`;
+  });
+}
+
+let chart, searchTimer;
+$('#search').oninput = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = $('#search').value.trim();
+    if (q.length < 2) return;
+    const hits = await api('/api/items/search?q=' + encodeURIComponent(q));
+    const sel = $('#search-results');
+    sel.innerHTML = '';
+    for (const h of hits) sel.add(new Option(h.name, h.item_id));
+    if (hits.length) showHistory(hits[0].item_id);
+  }, 250);
+};
+$('#search-results').onchange = e => showHistory(e.target.value);
+
+async function showHistory(id) {
+  const h = await api(`/api/items/${id}/history`);
+  $('#history-title').textContent = h.name;
+  const data = [
+    h.points.map(p => Date.parse(p.file_mtime) / 1000),
+    h.points.map(p => p.min_price == null ? null : p.min_price / 10000),
+    h.points.map(p => p.available),
+  ];
+  const axis = {stroke: css('--muted'), grid: {stroke: css('--line')}, ticks: {stroke: css('--line')}};
+  const opts = {
+    width: Math.min(900, $('main').clientWidth - 20), height: 320,
+    series: [{}, {label: 'Lowest price', stroke: css('--accent'), scale: 'g', value: (u, v) => v == null ? '' : money(v * 10000)},
+             {label: 'Listed', stroke: css('--series2'), scale: 'n'}],
+    axes: [axis, {...axis, scale: 'g', label: 'gold'}, {...axis, scale: 'n', side: 1, label: 'listed', grid: {show: false}}],
+  };
+  if (chart) chart.destroy();
+  chart = new uPlot(opts, data, $('#chart'));
+}
+
+async function loadScans() {
+  const scans = await api('/api/scans');
+  for (const sel of [$('#st-from'), $('#st-to')]) {
+    sel.innerHTML = '';
+    for (const s of scans) sel.add(new Option(`#${s.id} ${new Date(s.file_mtime).toLocaleString()} (${s.items} items)`, s.id));
+  }
+  if (scans.length >= 2) {
+    $('#st-from').value = scans[scans.length - 2].id;
+    $('#st-to').value = scans[scans.length - 1].id;
+  }
+}
+
+async function loadSellthrough() {
+  const f = $('#st-from').value, t = $('#st-to').value;
+  if (!f || !t || f === t) {
+    $('#st-table').innerHTML = '<tr><td>Import at least 2 scans, and pick 2 different scans.</td></tr>';
+    return;
+  }
+  const res = await api(`/api/sellthrough?from=${f}&to=${t}`);
+  renderTable($('#st-table'), [
+    {key: 'name', label: 'Item'},
+    {key: 'from_available', label: 'Listed before'},
+    {key: 'to_available', label: 'Listed after'},
+    {key: 'change', label: 'Change', cls: v => v < 0 ? 'pos' : v > 0 ? 'neg' : ''},
+    {key: 'from_price', label: 'Price before', fmt: money},
+    {key: 'to_price', label: 'Price after', fmt: money},
+  ], res.rows);
+}
+$('#st-from').onchange = loadSellthrough;
+$('#st-to').onchange = loadSellthrough;
+
+async function loadSettings() {
+  const s = await api('/api/settings');
+  const f = $('#settings-form');
+  f.innerHTML = '';
+  const field = (key, label, type) => {
+    const l = document.createElement('label');
+    l.textContent = label + ' ';
+    const i = document.createElement(type === 'json' ? 'textarea' : 'input');
+    if (type !== 'json') i.type = type;
+    if (type === 'number') i.step = 'any';
+    i.name = key;
+    i.dataset.kind = type;
+    i.value = type === 'json' ? JSON.stringify(s[key], null, 2) : (s[key] ?? '');
+    l.appendChild(i);
+    f.appendChild(l);
+  };
+  field('savedvariables_path', 'SavedVariables file', 'text');
+  field('realm', 'Realm (empty = first realm in the file)', 'text');
+  field('skills', 'Profession caps (JSON)', 'json');
+  field('skill_overrides', 'Forever recipe levels, item id to skill (JSON)', 'json');
+  field('max_use_level', 'Max use level', 'number');
+  field('min_listed', 'Min listed', 'number');
+  field('cast_seconds', 'Cast seconds', 'number');
+  field('ah_cut', 'AH cut (0.05 = 5%)', 'number');
+  const save = document.createElement('button');
+  save.textContent = 'Save';
+  const msg = document.createElement('span');
+  msg.className = 'note';
+  f.append(save, msg);
+  f.onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const out = {};
+      for (const el of f.elements) {
+        if (!el.name) continue;
+        const k = el.dataset.kind;
+        out[el.name] = k === 'json' ? JSON.parse(el.value) : k === 'number' ? Number(el.value) : (el.value || null);
+      }
+      await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(out)});
+      msg.textContent = ' Saved.';
+      loadCrafts();
+    } catch (err) {
+      msg.textContent = ' ' + err.message;
+    }
+  };
+}
+
+let lastScans = null;
+async function refreshStatus() {
+  try {
+    const s = await api('/api/status');
+    const el = $('#status');
+    el.textContent = s.last_error || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`;
+    el.className = s.last_error ? 'error' : '';
+    if (s.scans !== lastScans) {
+      lastScans = s.scans;
+      loadCrafts();
+      await loadScans();
+      loadSellthrough();
+    }
+  } catch (err) {
+    $('#status').textContent = 'Server not reachable';
+    $('#status').className = 'error';
+  }
+}
+
+$('#import').onclick = async () => { await api('/api/import', {method: 'POST'}); refreshStatus(); };
+for (const b of document.querySelectorAll('nav button')) {
+  b.onclick = () => {
+    document.querySelectorAll('nav button, section').forEach(e => e.classList.remove('active'));
+    b.classList.add('active');
+    $('#' + b.dataset.tab).classList.add('active');
+  };
+}
+
+refreshStatus();
+loadSettings();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>
