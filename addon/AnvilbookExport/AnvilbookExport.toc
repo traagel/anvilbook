@@ -1,4 +1,4 @@
-## Interface: 16001
+## Interface: 16001, 11508, 11509
 ## Title: Anvilbook Export
 ## Notes: Records known trade skill recipes for the anvilbook app.
 ## Version: 1.0
