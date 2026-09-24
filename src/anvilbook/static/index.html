@@ -247,6 +247,12 @@ async function loadPlan() {
   out.appendChild(head);
   if (!p.count) return;
 
+  const wrapped = table => {
+    const box = document.createElement('div');
+    box.className = 'wrap';
+    box.appendChild(table);
+    return box;
+  };
   out.appendChild(document.createElement('h4')).textContent = 'Buy';
   const buys = document.createElement('table');
   renderTable(buys, [
@@ -255,7 +261,7 @@ async function loadPlan() {
     {key: 'unit_price', label: 'Each', fmt: money},
     {key: 'total', label: 'Total', fmt: money},
   ], p.purchases);
-  out.appendChild(buys);
+  out.appendChild(wrapped(buys));
 
   if (p.steps.length) {
     out.appendChild(document.createElement('h4')).textContent = 'Then craft';
@@ -265,18 +271,12 @@ async function loadPlan() {
       {key: 'casts', label: 'Times'},
       {key: 'makes', label: 'Each makes'},
     ], p.steps);
-    out.appendChild(steps);
+    out.appendChild(wrapped(steps));
   }
-  const owned = Object.entries(p.owned_used);
-  if (owned.length) out.appendChild(planLine('From your bags', owned.map(([i, n]) => `${n} × ${itemName(i)}`).join(', ')));
-  const spare = Object.entries(p.leftovers);
-  if (spare.length) out.appendChild(planLine('Left over', spare.map(([i, n]) => `${n} × ${itemName(i)}`).join(', ')));
+  const list = rows => rows.map(r => `${r.quantity} × ${r.name}`).join(', ');
+  if (p.owned_used.length) out.appendChild(planLine('From your bags', list(p.owned_used)));
+  if (p.leftovers.length) out.appendChild(planLine('Left over', list(p.leftovers)));
   out.appendChild(planLine('Note', 'Prices are the lowest listing only. Buying a lot costs more than this.'));
-}
-
-const itemNames = {};
-function itemName(id) {
-  return itemNames[id] || `item ${id}`;
 }
 
 function showPlanItems() {
@@ -284,7 +284,6 @@ function showPlanItems() {
   const chosen = sel.value;
   sel.innerHTML = '';
   for (const r of crafts) {
-    itemNames[r.item_id] = r.name;
     sel.add(new Option(`${r.name} (${money(r.profit)} each)`, r.item_id));
   }
   if (chosen) sel.value = chosen;

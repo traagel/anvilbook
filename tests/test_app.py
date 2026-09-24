@@ -206,7 +206,7 @@ def test_plan_for_a_budget(env, tmp_path):
     # 2 copper bars are already in the bags, so only tin is bought.
     assert {p['name']: p['quantity'] for p in plan['purchases']} == {'Tin Bar': 2}
     assert [s['name'] for s in plan['steps']] == ['Bronze Bar']
-    assert plan['owned_used'] == {'2840': 2}
+    assert plan['owned_used'] == [{'item_id': 2840, 'name': 'Copper Bar', 'quantity': 2}]
     assert plan['cost'] == 496
 
     broke = client.get('/api/plan', params={'item_id': 2841, 'budget': 10}).json()

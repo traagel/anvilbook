@@ -129,7 +129,10 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
             raise HTTPException(409, 'No price scan yet')
         owned = dict(exp.bags) if exp and use_bags else {}
         result = plan_for(calc, item_id, count, owned) if count else for_budget(calc, item_id, budget, owned)
-        return {**asdict(result), 'budget': budget}
+        named = lambda counts: [{'item_id': i, 'name': (calc.items.get(i) or {}).get('name') or str(i),
+                                 'quantity': n} for i, n in sorted(counts.items())]
+        return {**asdict(result), 'budget': budget,
+                'owned_used': named(result.owned_used), 'leftovers': named(result.leftovers)}
 
     @app.get('/api/items/search')
     def search(q: str, limit: int = 20):
