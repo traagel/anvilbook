@@ -173,6 +173,46 @@ def test_measured_disenchants_replace_the_table(env, tmp_path):
     assert poniard['de_value'] == pytest.approx(5 * 220 * 0.95)
 
 
+BAGS = b'''
+AnvilbookExportDB = {
+["characters"] = {
+["Thordak - Classic Beta PvP"] = {
+["updated"] = 200,
+["bags"] = { [2840] = 2, },
+["professions"] = {
+["Smelting"] = {
+["rank"] = 99, ["maxRank"] = 150,
+["recipes"] = {
+[2841] = { ["name"] = "Bronze Bar", ["minMade"] = 2, ["maxMade"] = 2, ["difficulty"] = "easy",
+  ["reagents"] = { { ["id"] = 2840, ["count"] = 1, }, { ["id"] = 3576, ["count"] = 1, }, }, },
+},
+},
+},
+},
+},
+}
+'''
+
+
+def test_plan_for_a_budget(env, tmp_path):
+    client, _ = env
+    (tmp_path / 'AnvilbookExport.lua').write_bytes(BAGS)
+    client.post('/api/import')
+
+    plan = client.get('/api/plan', params={'item_id': 2841, 'budget': 600}).json()
+
+    assert plan['name'] == 'Bronze Bar'
+    assert plan['count'] == 4
+    # 2 copper bars are already in the bags, so only tin is bought.
+    assert {p['name']: p['quantity'] for p in plan['purchases']} == {'Tin Bar': 2}
+    assert [s['name'] for s in plan['steps']] == ['Bronze Bar']
+    assert plan['owned_used'] == {'2840': 2}
+    assert plan['cost'] == 496
+
+    broke = client.get('/api/plan', params={'item_id': 2841, 'budget': 10}).json()
+    assert broke['count'] == 0 and broke['short_by'] > 0
+
+
 def test_crafts_use_game_recipes(env, tmp_path):
     client, _ = env
     (tmp_path / 'AnvilbookExport.lua').write_bytes(GAME_EXPORT)

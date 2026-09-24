@@ -6,7 +6,20 @@ from .disenchant import expected_value
 # Deep enough for ore -> bar -> alloy -> item; also stops recipe cycles.
 MAX_DEPTH = 3
 
-Option = tuple[float, float, str]
+@dataclass(frozen=True)
+class Buy:
+    item_id: int
+
+
+@dataclass(frozen=True)
+class Craft:
+    item_id: int
+    recipe: dict
+    children: tuple
+
+
+# (price, casts, path text, how to get it)
+Option = tuple[float, float, str, Buy | Craft]
 
 
 @dataclass
@@ -100,26 +113,28 @@ class Calculator:
             opts: list[Option] = []
             price = self.buy_price(item_id)
             if price:
-                opts.append((price, 0, 'buy'))
+                opts.append((price, 0, 'buy', Buy(item_id)))
             if depth < MAX_DEPTH:
                 for recipe in (self.items.get(item_id) or {}).get('createdBy') or []:
                     if self.can_craft(item_id, recipe):
                         n = sum(recipe['amount']) / 2
-                        opts += [(p / n, c / n, path) for p, c, path in self.recipe_options(recipe, depth + 1)]
+                        opts += [(p / n, c / n, path, node)
+                                 for p, c, path, node in self.recipe_options(recipe, depth + 1, item_id)]
             self._memo[key] = pareto(opts)
         return self._memo[key]
 
-    def recipe_options(self, recipe: dict, depth: int) -> list[Option]:
+    def recipe_options(self, recipe: dict, depth: int, item_id: int = 0) -> list[Option]:
         per_reagent = []
         for r in recipe['reagents']:
             name = (self.items.get(r['itemId']) or {}).get('name', str(r['itemId']))
-            per_reagent.append([(p * r['amount'], c * r['amount'], name, path)
-                                for p, c, path in self.options(r['itemId'], depth)])
+            per_reagent.append([(p * r['amount'], c * r['amount'], name, path, node)
+                                for p, c, path, node in self.options(r['itemId'], depth)])
         out = []
         for combo in product(*per_reagent):
-            crafted = [f'{name}={path}' for _, _, name, path in combo if path != 'buy']
+            crafted = [f'{name}={path}' for _, _, name, path, _ in combo if path != 'buy']
             out.append((sum(o[0] for o in combo), 1 + sum(o[1] for o in combo),
-                        'craft' + (f"[{', '.join(crafted)}]" if crafted else '')))
+                        'craft' + (f"[{', '.join(crafted)}]" if crafted else ''),
+                        Craft(item_id, recipe, tuple(o[4] for o in combo))))
         return pareto(out)
 
     def rows(self) -> list[CraftRow]:
@@ -136,11 +151,11 @@ class Calculator:
                 sale = max(price['min_price'] * (1 - self.s.ah_cut), item.get('sellPrice') or 0)
                 de_value = self.disenchant_value(item)
                 revenue = max(sale, de_value) * n
-                opts = self.recipe_options(recipe, 0)
+                opts = self.recipe_options(recipe, 0, item_id)
                 if not opts:
                     continue
-                cost, casts, path = max(opts, key=lambda o: (revenue - o[0]) / o[1])
-                cheap_cost, cheap_casts, cheap_path = opts[0]
+                cost, casts, path, _ = max(opts, key=lambda o: (revenue - o[0]) / o[1])
+                cheap_cost, cheap_casts, cheap_path, _ = opts[0]
                 if revenue - cost <= 0:
                     continue
                 per_cast = (revenue - cost) / casts

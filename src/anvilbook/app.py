@@ -13,6 +13,7 @@ from .craft import Calculator, CraftSettings
 from .disenchant import effective_table, observed, parse_records
 from .items import load_items
 from .luatable import LuaParseError, parse_savedvariables
+from .plan import for_budget, plan_for
 from .recipes import GameExport, export_skills, load_export, load_exports, merge
 from .store import Store
 from .watcher import Importer
@@ -99,15 +100,14 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         return [{'character': e.character, 'updated': e.updated, 'professions': export_skills(e),
                  'maxRanks': {p: int(d.get('maxRank') or 0) for p, d in e.professions.items()}} for e in found]
 
-    @app.get('/api/crafts')
-    def crafts():
+    def calculator() -> tuple[Calculator | None, GameExport | None]:
         scan_id = store.latest_scan_id()
+        exp = game_export()
         if scan_id is None:
-            return []
+            return None, exp
         stored = store.settings()
         settings = CraftSettings.from_dict(stored)
         known = items()
-        exp = game_export()
         if exp:
             known = merge(known, exp)
             # The character can only craft what the game reported for them.
@@ -115,8 +115,21 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         settings.disenchanter = bool(stored['assume_enchanter']) or 'Enchanting' in settings.skills
         settings.disenchant_table = effective_table(settings.disenchant_table, disenchant_records(),
                                                     int(stored['min_disenchant_samples']))
-        calc = Calculator(known, store.prices(scan_id), store.vendor_prices(), settings)
-        return [asdict(r) for r in calc.rows()]
+        return Calculator(known, store.prices(scan_id), store.vendor_prices(), settings), exp
+
+    @app.get('/api/crafts')
+    def crafts():
+        calc, _ = calculator()
+        return [asdict(r) for r in calc.rows()] if calc else []
+
+    @app.get('/api/plan')
+    def plan(item_id: int, budget: int, count: int | None = None, use_bags: bool = True):
+        calc, exp = calculator()
+        if calc is None:
+            raise HTTPException(409, 'No price scan yet')
+        owned = dict(exp.bags) if exp and use_bags else {}
+        result = plan_for(calc, item_id, count, owned) if count else for_budget(calc, item_id, budget, owned)
+        return {**asdict(result), 'budget': budget}
 
     @app.get('/api/items/search')
     def search(q: str, limit: int = 20):

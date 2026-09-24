@@ -33,6 +33,13 @@ nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #professions .bar i { display:block; height:2px; background:var(--accent); }
 #empty { color:var(--muted); padding:1rem 0; }
 #enchanter-box { margin:0 0 .2rem; color:var(--muted); font-size:12px; display:flex; gap:.3rem; align-items:center; }
+#plan-form { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+#plan-form label { margin:0; display:flex; gap:.4rem; align-items:center; }
+#plan-result { margin-top:1rem; max-width:52rem; }
+#plan-result h3 { margin:.2rem 0; font-size:1.1rem; font-weight:600; }
+#plan-result .verdict { color:var(--fg); font-size:1.4rem; margin:.4rem 0 1rem; }
+#plan-result .verdict b { color:var(--accent); }
+#plan-result h4 { margin:1rem 0 .3rem; color:var(--muted); font-size:12px; font-weight:600; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 main { padding:1rem; }
 section { display:none; }
@@ -62,6 +69,7 @@ input[type=text] { width:100%; max-width:40rem; }
   <h1>anvilbook</h1>
   <nav>
     <button data-tab="crafts" class="active">Crafts</button>
+    <button data-tab="plan">Plan</button>
     <button data-tab="history">History</button>
     <button data-tab="sellthrough">Sell-through</button>
     <button data-tab="settings">Settings</button>
@@ -79,6 +87,15 @@ input[type=text] { width:100%; max-width:40rem; }
     <p class="note">Best path by profit per cast. Click a row to see the cheapest path.</p>
     <div class="wrap"><table id="crafts-table"></table></div>
     <p id="empty" hidden></p>
+  </section>
+  <section id="plan">
+    <form id="plan-form">
+      <label>Item <select id="plan-item"></select></label>
+      <label>Budget <input id="plan-budget" type="text" inputmode="numeric" size="10"> gold</label>
+      <label><input type="checkbox" id="plan-bags" checked> Use what is in my bags</label>
+      <button>Plan it</button>
+    </form>
+    <div id="plan-result"></div>
   </section>
   <section id="history">
     <input id="search" type="text" placeholder="Search an item" autocomplete="off">
@@ -185,7 +202,11 @@ function showCrafts() {
     const td = d.insertCell();
     td.colSpan = craftCols.length;
     td.textContent = `Best per cast: ${r.path}. Cheapest path: ${money(r.cheapest_profit)} profit in ` +
-      `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}.`;
+      `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}. `;
+    const go = document.createElement('button');
+    go.textContent = 'Plan a batch';
+    go.onclick = event => { event.stopPropagation(); planFor(r.item_id); };
+    td.appendChild(go);
   });
 }
 
@@ -193,7 +214,89 @@ async function loadCrafts() {
   crafts = await api('/api/crafts');
   showCrafts();
   showProfessions();
+  showPlanItems();
 }
+
+function parseGold(text) {
+  const match = String(text).trim().match(/^(?:(\d+)g)?\s*(?:(\d+)s)?\s*(?:(\d+)c)?$/i);
+  if (match && (match[1] || match[2] || match[3])) {
+    return (+(match[1] || 0)) * 10000 + (+(match[2] || 0)) * 100 + (+(match[3] || 0));
+  }
+  return Math.round(parseFloat(text || 0) * 10000);
+}
+
+function planLine(label, value) {
+  const p = document.createElement('p');
+  p.className = 'note';
+  p.textContent = `${label}: ${value}`;
+  return p;
+}
+
+async function loadPlan() {
+  const itemId = $('#plan-item').value;
+  if (!itemId) return;
+  const budget = parseGold($('#plan-budget').value);
+  const out = $('#plan-result');
+  const p = await api(`/api/plan?item_id=${itemId}&budget=${budget}&use_bags=${$('#plan-bags').checked}`);
+  out.innerHTML = '';
+  const head = document.createElement('p');
+  head.className = 'verdict';
+  head.innerHTML = p.count
+    ? `Craft <b>${p.count}</b> × ${p.name} for ${money(p.cost)}. Sells for ${money(p.revenue)}, profit ${money(p.profit)}.`
+    : `${money(budget)} is not enough for one ${p.name}. You are ${money(p.short_by)} short.`;
+  out.appendChild(head);
+  if (!p.count) return;
+
+  out.appendChild(document.createElement('h4')).textContent = 'Buy';
+  const buys = document.createElement('table');
+  renderTable(buys, [
+    {key: 'name', label: 'Item'},
+    {key: 'quantity', label: 'Quantity'},
+    {key: 'unit_price', label: 'Each', fmt: money},
+    {key: 'total', label: 'Total', fmt: money},
+  ], p.purchases);
+  out.appendChild(buys);
+
+  if (p.steps.length) {
+    out.appendChild(document.createElement('h4')).textContent = 'Then craft';
+    const steps = document.createElement('table');
+    renderTable(steps, [
+      {key: 'name', label: 'Item'},
+      {key: 'casts', label: 'Times'},
+      {key: 'makes', label: 'Each makes'},
+    ], p.steps);
+    out.appendChild(steps);
+  }
+  const owned = Object.entries(p.owned_used);
+  if (owned.length) out.appendChild(planLine('From your bags', owned.map(([i, n]) => `${n} × ${itemName(i)}`).join(', ')));
+  const spare = Object.entries(p.leftovers);
+  if (spare.length) out.appendChild(planLine('Left over', spare.map(([i, n]) => `${n} × ${itemName(i)}`).join(', ')));
+  out.appendChild(planLine('Note', 'Prices are the lowest listing only. Buying a lot costs more than this.'));
+}
+
+const itemNames = {};
+function itemName(id) {
+  return itemNames[id] || `item ${id}`;
+}
+
+function showPlanItems() {
+  const sel = $('#plan-item');
+  const chosen = sel.value;
+  sel.innerHTML = '';
+  for (const r of crafts) {
+    itemNames[r.item_id] = r.name;
+    sel.add(new Option(`${r.name} (${money(r.profit)} each)`, r.item_id));
+  }
+  if (chosen) sel.value = chosen;
+}
+
+function planFor(itemId) {
+  $('#plan-item').value = itemId;
+  showTab('plan');
+  loadPlan();
+}
+
+$('#plan-form').onsubmit = e => { e.preventDefault(); loadPlan(); };
 
 let chart, searchTimer;
 $('#search').oninput = () => {
@@ -413,7 +516,9 @@ async function refreshStatus() {
   try {
     const s = await api('/api/status');
     const el = $('#status');
+    const missing = s.pinned && s.export && s.export.character !== s.pinned;
     el.textContent = s.last_error
+      || (missing ? `${s.pinned} has no recipes yet. Showing ${s.export.character}. Open a profession window on them, then /reload` : '')
       || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`
       + (s.export ? '' : '. No recipes yet: open a profession window in game, then /reload');
     el.className = s.last_error ? 'error' : '';
@@ -432,13 +537,12 @@ async function refreshStatus() {
 }
 
 $('#import').onclick = async () => { await api('/api/import', {method: 'POST'}); refreshStatus(); };
-for (const b of document.querySelectorAll('nav button')) {
-  b.onclick = () => {
-    document.querySelectorAll('nav button, section').forEach(e => e.classList.remove('active'));
-    b.classList.add('active');
-    $('#' + b.dataset.tab).classList.add('active');
-  };
+function showTab(name) {
+  document.querySelectorAll('nav button, section').forEach(e => e.classList.remove('active'));
+  document.querySelector(`nav button[data-tab="${name}"]`).classList.add('active');
+  $('#' + name).classList.add('active');
 }
+for (const b of document.querySelectorAll('nav button')) b.onclick = () => showTab(b.dataset.tab);
 
 refreshStatus();
 loadSettings();

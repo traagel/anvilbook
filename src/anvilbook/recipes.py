@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .luatable import parse_savedvariables
@@ -12,6 +12,7 @@ class GameExport:
     character: str
     updated: int
     professions: dict[str, dict]
+    bags: dict[int, int] = field(default_factory=dict)
 
 
 def _array(t) -> list:
@@ -29,7 +30,8 @@ def load_exports(path: Path) -> list[GameExport]:
     out = []
     for name, char in (chars or {}).items():
         professions = {ALIASES.get(str(p), str(p)): data for p, data in (char.get('professions') or {}).items()}
-        out.append(GameExport(str(name), int(char.get('updated') or 0), professions))
+        bags = {int(i): int(n) for i, n in (char.get('bags') or {}).items()}
+        out.append(GameExport(str(name), int(char.get('updated') or 0), professions, bags))
     return sorted(out, key=lambda e: -e.updated)
 
 

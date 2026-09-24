@@ -155,6 +155,15 @@ function GetNumLootItems() return #loot end
 function GetLootSlotLink(i) return "|cffffffff|Hitem:" .. loot[i].id .. "::|h[Mat]|h|r" end
 function GetLootSlotInfo(i) return "icon", "Strange Dust", loot[i].count, nil, 2 end
 
+known.BAG_UPDATE_DELAYED = true
+C_Container.GetContainerItemInfo = function(bag, slot)
+  if bag == 0 and slot == 1 then return {itemID = 2841, stackCount = 19} end
+  if bag == 0 and slot == 2 then return {itemID = 3490, stackCount = 1} end
+end
+handler(frame, "BAG_UPDATE_DELAYED")
+local bags = AnvilbookExportDB.characters["Thordak - Classic Beta PvP"].bags
+assert(bags and bags[2841] == 19 and bags[3490] == 1, "bag contents recorded")
+
 handler(frame, "UNIT_SPELLCAST_SENT", "player", "Deadly Bronze Poniard", "cast-1", 13262)
 handler(frame, "LOOT_OPENED")
 local de = AnvilbookExportDB.disenchants

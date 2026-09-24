@@ -248,6 +248,44 @@ local function bagItem(name)
   end
 end
 
+local function character()
+  AnvilbookExportDB = AnvilbookExportDB or {}
+  local db = AnvilbookExportDB
+  db.characters = db.characters or {}
+  local key = UnitName("player") .. " - " .. GetRealmName()
+  db.characters[key] = db.characters[key] or {professions = {}}
+  return db.characters[key]
+end
+
+-- The shopping list subtracts what the character already carries.
+local function recordBags()
+  local containers = C_Container or _G
+  local numSlots = containers.GetContainerNumSlots or GetContainerNumSlots
+  local slotInfo = containers.GetContainerItemInfo
+  local itemIdAt = containers.GetContainerItemID or GetContainerItemID
+  if not numSlots then
+    return
+  end
+  local bags = {}
+  for bag = 0, 4 do
+    for slot = 1, (numSlots(bag) or 0) do
+      local id, count
+      if slotInfo then
+        local info = slotInfo(bag, slot)
+        id, count = info and info.itemID, info and info.stackCount
+      elseif itemIdAt then
+        id, count = itemIdAt(bag, slot), select(2, GetContainerItemInfo(bag, slot))
+      end
+      if id then
+        bags[id] = (bags[id] or 0) + (count or 1)
+      end
+    end
+  end
+  local char = character()
+  char.bags = bags
+  char.bagsUpdated = time()
+end
+
 local function recordDisenchant()
   local item = pendingDisenchant
   pendingDisenchant = nil
@@ -309,8 +347,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
     end
     return
   end
-  if event == "LOOT_OPENED" then
-    local ok, err = pcall(recordDisenchant)
+  if event == "LOOT_OPENED" or event == "BAG_UPDATE_DELAYED" then
+    local ok, err = pcall(event == "LOOT_OPENED" and recordDisenchant or recordBags)
     if not ok then
       geterrorhandler()(err)
     end
@@ -321,6 +359,6 @@ end)
 frame:RegisterEvent("TRADE_SKILL_SHOW")
 -- Registering an event this client does not know raises an error.
 for _, event in ipairs({"TRADE_SKILL_UPDATE", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED",
-                        "UNIT_SPELLCAST_SENT", "LOOT_OPENED"}) do
+                        "UNIT_SPELLCAST_SENT", "LOOT_OPENED", "BAG_UPDATE_DELAYED"}) do
   pcall(frame.RegisterEvent, frame, event)
 end

@@ -31,8 +31,8 @@ def row(rows, item_id):
 
 def test_bronze_pareto_paths():
     calc = Calculator(ITEMS, PRICES, {}, settings())
-    opts = calc.recipe_options(ITEMS[2841]['createdBy'][0], 0)
-    assert [(p, c) for p, c, _ in opts] == [(257, 3), (273, 2), (321, 1)]
+    opts = calc.recipe_options(ITEMS[2841]['createdBy'][0], 0, 2841)
+    assert [(p, c) for p, c, _, _ in opts] == [(257, 3), (273, 2), (321, 1)]
 
 
 def test_bronze_row_best_per_cast_and_cheapest():
@@ -52,7 +52,7 @@ def test_skill_cap_blocks_recipes():
     rows = calc.rows()
     assert row(rows, 2841) is None and row(rows, 3576) is None
     assert row(rows, 2840) is not None
-    assert calc.options(3576) == [(248, 0, 'buy')]
+    assert [(p, c, path) for p, c, path, _ in calc.options(3576)] == [(248, 0, 'buy')]
 
 
 def test_forever_override_unlocks_recipe():
@@ -72,8 +72,9 @@ def test_filters():
 
 def test_vendor_price_beats_ah():
     items = {**ITEMS, 2771: {'name': 'Tin Ore', 'vendorPrice': 150}}
-    assert Calculator(items, PRICES, {}, settings()).options(2771) == [(150, 0, 'buy')]
-    assert Calculator(ITEMS, PRICES, {2771: 120}, settings()).options(2771) == [(120, 0, 'buy')]
+    price = lambda calc: [(p, c, path) for p, c, path, _ in calc.options(2771)]
+    assert price(Calculator(items, PRICES, {}, settings())) == [(150, 0, 'buy')]
+    assert price(Calculator(ITEMS, PRICES, {2771: 120}, settings())) == [(120, 0, 'buy')]
 
 
 def test_known_game_recipe_ignores_overrides_and_keeps_difficulty():
