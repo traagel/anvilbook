@@ -156,6 +156,7 @@ input[type=text] { width:100%; max-width:40rem; }
       <label>Server address
         <input id="share-url" type="text" placeholder="https://anvilbook.example.com">
       </label>
+      <p id="share-error" class="error" hidden></p>
       <div id="share-signin">
         <p class="note">No email is used, and there is no password reset. If you forget the
           password, the account is gone.</p>
@@ -163,7 +164,6 @@ input[type=text] { width:100%; max-width:40rem; }
         <label>Password <input id="share-pass" type="password" autocomplete="current-password"></label>
         <button id="share-login">Sign in</button>
         <button id="share-register">Create an account</button>
-        <p id="share-error" class="error" hidden></p>
       </div>
       <div id="share-account" hidden>
         <p>Signed in as <b id="share-who"></b>. <button id="share-logout">Sign out</button></p>
@@ -708,8 +708,16 @@ async function loadShare() {
     const tick = document.createElement('input');
     tick.type = 'checkbox';
     tick.checked = !!share.published_characters[c.character];
-    tick.onchange = () => saveShare({published_characters:
-      {...share.published_characters, [c.character]: tick.checked}});
+    tick.onchange = async () => {
+      shareError('');
+      try {
+        await saveShare({published_characters:
+          {...share.published_characters, [c.character]: tick.checked}});
+      } catch (e) {
+        shareError(e.message);
+        await loadShare();
+      }
+    };
     const ranks = Object.entries(c.professions).map(([p, r]) => `${p} ${r}`).join(', ');
     label.append(tick, document.createTextNode(c.character + ' '));
     const note = document.createElement('span');

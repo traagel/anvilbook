@@ -3,7 +3,8 @@ import urllib.error
 import urllib.request
 from urllib.parse import quote, urlparse
 
-TIMEOUT = 20
+# Short: this runs inside the import the person is waiting for, and it retries once.
+TIMEOUT = 8
 
 
 class PushError(Exception):
@@ -19,21 +20,25 @@ def _reagents(value) -> list[dict]:
 class PushClient:
     def __init__(self, base_url: str, token: str | None = None):
         self.base_url = (base_url or '').rstrip('/')
-        parsed = urlparse(self.base_url)
+        try:
+            parsed = urlparse(self.base_url)
+            hostname = parsed.hostname
+        except ValueError as e:
+            raise PushError(f'That server address does not work: {e}')
         if parsed.scheme not in ('http', 'https'):
             raise PushError('The server address must start with https://')
         # Passwords and tokens cross this wire.
-        if parsed.scheme == 'http' and parsed.hostname not in ('localhost', '127.0.0.1'):
+        if parsed.scheme == 'http' and hostname not in ('localhost', '127.0.0.1'):
             raise PushError('Use https, or the password would travel in the open')
         self.token = token
 
     def _call(self, method: str, path: str, body: dict | None = None, retries: int = 1) -> dict:
-        request = urllib.request.Request(f'{self.base_url}{path}', method=method,
-                                         data=json.dumps(body).encode() if body is not None else None)
-        request.add_header('Content-Type', 'application/json')
-        if self.token:
-            request.add_header('Authorization', f'Bearer {self.token}')
         try:
+            request = urllib.request.Request(f'{self.base_url}{path}', method=method,
+                                             data=json.dumps(body).encode() if body is not None else None)
+            request.add_header('Content-Type', 'application/json')
+            if self.token:
+                request.add_header('Authorization', f'Bearer {self.token}')
             with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                 return json.loads(response.read() or b'{}')
         except urllib.error.HTTPError as e:
@@ -48,6 +53,11 @@ class PushClient:
             if retries > 0:
                 return self._call(method, path, body, retries - 1)
             raise PushError(f'Could not reach the server: {e}')
+        except PushError:
+            raise
+        except Exception as e:
+            # A mistyped address reaches urllib as anything from InvalidURL to UnicodeError.
+            raise PushError(f'That server address does not work: {e}')
 
     def register(self, username: str, password: str) -> str:
         self.token = self._call('POST', '/api/register',

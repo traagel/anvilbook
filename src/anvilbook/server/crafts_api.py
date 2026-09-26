@@ -31,10 +31,14 @@ def character_export(database, realm: str, name: str) -> GameExport:
             FROM character_recipes WHERE character_id = %s""", (rows[0]['id'],)):
         profession = professions.setdefault(recipe['profession'],
                                             {'rank': 0, 'maxRank': 0, 'recipes': {}})
+        # Rows written by an older server may hold any JSON shape; one of them must not
+        # take the public page down.
+        reagents = recipe['reagents'] if isinstance(recipe['reagents'], list) else []
+        usable = [r for r in reagents if isinstance(r, dict) and 'id' in r and 'count' in r]
         profession['recipes'][recipe['item_id']] = {
             'name': recipe['name'], 'minMade': recipe['min_made'], 'maxMade': recipe['max_made'],
             'difficulty': recipe['difficulty'],
-            'reagents': {i: dict(r) for i, r in enumerate(recipe['reagents'] or [], start=1)}}
+            'reagents': {i: dict(r) for i, r in enumerate(usable, start=1)}}
     return GameExport(name, 0, professions)
 
 

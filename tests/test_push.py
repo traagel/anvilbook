@@ -86,3 +86,10 @@ def test_an_unreachable_server_raises_push_error():
 def test_plain_http_is_refused_for_anything_but_localhost():
     with pytest.raises(PushError, match='https'):
         PushClient('http://example.com')
+
+
+@pytest.mark.parametrize('address', ['https://exa mple.com', 'https://[::1', 'https://' + 'h' * 300,
+                                     'https://', 'not a url'])
+def test_a_mistyped_address_gives_a_push_error(address):
+    with pytest.raises(PushError):
+        PushClient(address).login('thordak', 'a long password')

@@ -45,9 +45,9 @@ database cache. Point your own Ingress at the `anvilbook` Service.
 
 - **TLS is required.** Passwords and tokens cross the wire, and the client refuses a plain
   `http://` address unless it is `localhost`.
-- **Cap the request body at 5 MB.** The application refuses a larger upload, but only after it
-  has been received, so the limit belongs at the Ingress as well. On ingress-nginx that is
-  `nginx.ingress.kubernetes.io/proxy-body-size: 5m`.
+- **Cap the request body at 5 MB at the Ingress too.** The application stops reading an upload
+  once it passes the limit, but a proxy refuses it earlier and with a clearer message. On
+  ingress-nginx that is `nginx.ingress.kubernetes.io/proxy-body-size: 5m`.
 
 ## Running it without Kubernetes
 
@@ -61,7 +61,10 @@ The release workflow builds and pushes that image on every tag.
 ## Limits
 
 - Each account may push 20 times an hour, at most 20000 price rows a scan, with prices between
-  1 copper and 10000 gold, and a scan time no more than 2 days from now.
+  1 copper and 10 million gold, and a scan time no older than 2 days and not in the future.
+- A character carries at most 3000 recipes and 40 professions.
+- Sign-ups are capped at 10 an hour and sign-ins at 60 an hour for the whole process, because
+  each one costs a 32 MiB scrypt hash. Both counters live in memory, like the push counter.
 - A scan with the same account, realm and scan time as an earlier one replaces it, so a client
   that retries cannot double its history.
 - **Rate limiting counts in memory, so it assumes a single replica.** Run more than one replica

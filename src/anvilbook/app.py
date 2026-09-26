@@ -334,14 +334,16 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         settings = store.settings()
         allowed = {k: v for k, v in body.items() if k in ('push_prices', 'published_characters')}
         for character, was in (settings['published_characters'] if 'published_characters' in allowed else {}).items():
-            # Turning a switch off must also remove what the site already holds.
             if was and not allowed['published_characters'].get(character):
                 name, realm = character_parts(character, settings)
                 try:
                     PushClient(settings['server_url'],
                                settings['server_token']).unpublish_character(realm, name)
                 except PushError as e:
+                    # Saving the switch as off while the site still holds the character
+                    # would tell the person a lie they cannot see through.
                     log.warning('unpublish failed: %s', e)
+                    raise HTTPException(400, f'{character} is still published: {e}')
         return store.save_settings(allowed)
 
     @app.post('/api/share/push')

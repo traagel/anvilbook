@@ -1,9 +1,12 @@
 import logging
 import os
+import threading
+import time
 from pathlib import Path
 
+import psycopg
 from fastapi import Body, Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from ..items import load_items
@@ -16,20 +19,69 @@ from .read_api import add_read_routes
 log = logging.getLogger(__name__)
 PREFIX = 'Bearer '
 STATIC = Path(__file__).parent / 'static'
+MAX_BYTES = 5 * 1024 * 1024
+SIGNUPS_PER_HOUR = 10
+SIGNINS_PER_HOUR = 60
+TOO_LARGE = {'detail': 'That upload is larger than the 5 MB limit'}
+
+
+class BodyLimit:
+    """Stops reading an upload once it passes the limit.
+
+    A chunked request carries no Content-Length, so the header alone cannot hold the line.
+    Cutting the stream short makes the body unparseable, which the framework reports as a
+    plain 400; only a client that ignores Content-Length ends up with that vaguer message.
+    """
+
+    def __init__(self, app, limit: int = MAX_BYTES):
+        self.app = app
+        self.limit = limit
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            return await self.app(scope, receive, send)
+        declared = int(dict(scope.get('headers') or []).get(b'content-length', b'0') or 0)
+        if declared > self.limit:
+            return await JSONResponse(TOO_LARGE, 400)(scope, receive, send)
+        received = 0
+
+        async def counted():
+            nonlocal received
+            message = await receive()
+            if message['type'] == 'http.request':
+                received += len(message.get('body') or b'')
+                if received > self.limit:
+                    return {'type': 'http.disconnect'}
+            return message
+
+        await self.app(scope, counted, send)
 
 
 def create_server(database: Database | None = None, data_dir: Path | None = None) -> FastAPI:
     db: Database = database or Database()
+    db.execute('CREATE UNIQUE INDEX IF NOT EXISTS users_username_lower ON users (lower(username))')
     items_dir = Path(data_dir or os.environ.get('ANVILBOOK_DATA') or '/data')
     cache: dict[str, dict] = {}
+    items_lock = threading.Lock()
+    attempts: dict[str, list[float]] = {'register': [], 'login': []}
     app = FastAPI(title='anvilbook server')
 
+    app.add_middleware(BodyLimit)
+
+    def ration(kind: str, per_hour: int) -> None:
+        cutoff = time.monotonic() - 3600
+        attempts[kind] = [t for t in attempts[kind] if t > cutoff]
+        if len(attempts[kind]) >= per_hour:
+            raise HTTPException(429, 'Too many attempts. Try again later.')
+        attempts[kind].append(time.monotonic())
+
     def items_loader() -> dict:
-        # Created here, not at startup: the tests that never ask for crafts must not need /data.
-        if 'items' not in cache:
-            items_dir.mkdir(parents=True, exist_ok=True)
-            cache['items'] = load_items(items_dir / 'items.json')
-        return cache['items']
+        # The lock stops 2 first requests downloading over each other's part file.
+        with items_lock:
+            if 'items' not in cache:
+                items_dir.mkdir(parents=True, exist_ok=True)
+                cache['items'] = load_items(items_dir / 'items.json')
+            return cache['items']
 
     @app.get('/healthz')
     def healthz():
@@ -57,6 +109,8 @@ def create_server(database: Database | None = None, data_dir: Path | None = None
 
     @app.post('/api/register')
     def register(body: dict = Body(...)):
+        # Hashing a password costs 32 MiB and 50 ms, so the flood limit comes first.
+        ration('register', SIGNUPS_PER_HOUR)
         username, password = str(body.get('username') or ''), str(body.get('password') or '')
         try:
             check_username(username)
@@ -65,12 +119,16 @@ def create_server(database: Database | None = None, data_dir: Path | None = None
             raise HTTPException(400, str(e))
         if db.query('SELECT id FROM users WHERE lower(username) = lower(%s)', (username,)):
             raise HTTPException(409, 'That username is taken')
-        user = db.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id',
-                          (username, hash_password(password)))
+        try:
+            user = db.execute('INSERT INTO users (username, password_hash) VALUES (%s, %s) RETURNING id',
+                              (username, hash_password(password)))
+        except psycopg.errors.UniqueViolation:
+            raise HTTPException(409, 'That username is taken')
         return {'token': issue_token(user['id']), 'username': username}
 
     @app.post('/api/login')
     def login(body: dict = Body(...)):
+        ration('login', SIGNINS_PER_HOUR)
         username, password = str(body.get('username') or ''), str(body.get('password') or '')
         rows = db.query('SELECT id, username, password_hash FROM users WHERE lower(username) = lower(%s)',
                         (username,))

@@ -398,6 +398,34 @@ def test_a_failed_push_does_not_break_the_import(env, monkeypatch):
     assert 'Could not reach the server' in client.get('/api/status').json()['push_error']
 
 
+def test_a_failed_unpublish_keeps_the_switch_on(env, monkeypatch):
+    client, _ = env
+    client.put('/api/settings', json={'server_url': 'https://example.com', 'server_token': 'abc',
+                                      'published_characters': {'Thordak - Forever': True}})
+
+    class Failing:
+        def __init__(self, *args, **kw):
+            pass
+
+        def unpublish_character(self, *args, **kw):
+            raise PushError('Could not reach the server')
+
+    monkeypatch.setattr('anvilbook.app.PushClient', Failing)
+    response = client.put('/api/share/settings', json={'published_characters': {'Thordak - Forever': False}})
+
+    assert response.status_code == 400
+    # The site still holds the character, so the switch must not read as off.
+    assert client.get('/api/share').json()['published_characters'] == {'Thordak - Forever': True}
+
+
+def test_a_mistyped_server_address_is_explained_not_a_500(env):
+    client, _ = env
+    response = client.post('/api/share/login', json={'server_url': 'https://exa mple.com',
+                                                     'username': 'thordak', 'password': 'a long password'})
+    assert response.status_code == 400
+    assert response.json()['detail']
+
+
 def test_index_and_its_files_are_served(env):
     client, _ = env
     assert 'anvilbook' in client.get('/').text

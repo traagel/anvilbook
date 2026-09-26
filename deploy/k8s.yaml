@@ -14,6 +14,11 @@ spec:
         - name: anvilbook
           image: ghcr.io/traagel/anvilbook-server:latest
           ports: [{containerPort: 8000}]
+          # Hashing a password holds 32 MiB, and sign-up is public: without a ceiling a
+          # flood takes the node, not just the pod.
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
           env:
             - name: DATABASE_URL
               valueFrom:
@@ -25,6 +30,9 @@ spec:
             initialDelaySeconds: 20
           readinessProbe:
             httpGet: {path: /healthz, port: 8000}
+      # The container runs as a non-root user and must write the item cache into the PVC.
+      securityContext:
+        fsGroup: 1000
       volumes:
         - name: data
           persistentVolumeClaim: {claimName: anvilbook-data}

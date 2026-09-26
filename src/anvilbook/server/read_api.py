@@ -22,10 +22,13 @@ def add_read_routes(app, database) -> None:
             GROUP BY r.name ORDER BY r.name""")
 
     @app.get('/api/items/search')
-    def search(q: str, realm: str, limit: int = Query(30, le=100)):
-        return database.query(LATEST.replace('WHERE r.name = %s',
-                                             'WHERE r.name = %s AND p.name ILIKE %s')
-                              + ' LIMIT %s', (realm, f'%{q}%', limit))
+    def search(q: str, realm: str, limit: int = Query(30, ge=1, le=100)):
+        # Items the item database has never heard of reach us with no name, so the id is
+        # the only way a visitor can find them.
+        return database.query(
+            LATEST.replace('WHERE r.name = %s',
+                           "WHERE r.name = %s AND (p.name ILIKE %s OR p.item_id::text = %s)")
+            + ' LIMIT %s', (realm, f'%{q}%', q.strip(), limit))
 
     @app.get('/api/items/{item_id}')
     def item(item_id: int, realm: str):
