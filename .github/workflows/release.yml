@@ -49,6 +49,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/build-push-action@v6
+        # Off: the release job downloads every artifact, and it cannot extract a build record.
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: deploy/Dockerfile
@@ -77,6 +80,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: '{anvilbook-*,addon}'
       - name: name the files by platform
         run: |
           mkdir release
