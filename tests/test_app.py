@@ -353,6 +353,9 @@ def test_bad_settings_are_rejected(env):
     assert client.put('/api/settings', json={'min_listed': 'x'}).status_code == 400
 
 
-def test_index_is_served(env):
+def test_index_and_its_files_are_served(env):
     client, _ = env
     assert 'anvilbook' in client.get('/').text
+    logo = client.get('/logo.svg')
+    assert logo.status_code == 200
+    assert logo.headers['content-type'].startswith('image/svg')

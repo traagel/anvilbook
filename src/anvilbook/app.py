@@ -11,6 +11,7 @@ from pathlib import Path
 import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import config_path, load_config, write_config
 from .craft import Calculator, CraftSettings
@@ -89,6 +90,7 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
     @app.get('/')
     def index():
         return FileResponse(STATIC / 'index.html')
+
 
     def use_savedvariables(path: Path) -> dict:
         settings = store.save_settings({'savedvariables_path': str(path),
@@ -255,6 +257,8 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         except (KeyError, ValueError, TypeError, AttributeError) as e:
             raise HTTPException(400, str(e))
 
+    # Mounted last: a mount swallows every path registered after it.
+    app.mount('/', StaticFiles(directory=STATIC), name='static')
     return app
 
 
