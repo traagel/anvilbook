@@ -43,38 +43,58 @@ def setup_env(tmp_path, monkeypatch):
     return data
 
 
-def test_a_single_install_is_used_without_asking(tmp_path, monkeypatch):
+def test_nothing_is_searched_until_asked(tmp_path, monkeypatch):
     data = setup_env(tmp_path, monkeypatch)
     sv = game_install(tmp_path)
+    scans = []
+    monkeypatch.setattr('anvilbook.app.search_roots', lambda: scans.append('searched') or [tmp_path])
 
     with TestClient(create_app(data, watch=False)) as client:
         setup = client.get('/api/setup').json()
-        assert setup['configured'] is True
-        assert setup['savedvariables_path'] == str(sv)
-        assert setup['installs'][0]['addon_installed'] is False
-        assert client.get('/api/settings').json()['export_path'] == str(sv.with_name('AnvilbookExport.lua'))
+        assert setup == {'configured': False, 'installs': [], 'savedvariables_path': '',
+                         'addon_installed': False,
+                         'config_path': str(tmp_path / 'config.toml'), 'data_dir': str(data)}
+        assert scans == []
+
+        found = client.post('/api/setup/scan').json()
+        assert scans == ['searched']
+        assert [i['path'] for i in found['installs']] == [str(sv)]
+        assert found['installs'][0]['addon_installed'] is False
+        assert client.get('/api/settings').json()['savedvariables_path'] == ''
+
+
+def test_choosing_a_folder_configures_the_app(tmp_path, monkeypatch):
+    data = setup_env(tmp_path, monkeypatch)
+    first, second = game_install(tmp_path, '1#1'), game_install(tmp_path, '2#1')
+    monkeypatch.setattr('anvilbook.app.search_roots', lambda: [tmp_path])
+
+    with TestClient(create_app(data, watch=False)) as client:
+        assert sorted(i['path'] for i in client.post('/api/setup/scan').json()['installs']) == \
+            sorted([str(first), str(second)])
+
+        assert client.post('/api/setup', json={'savedvariables_path': str(second)}).json()['configured'] is True
+        assert client.get('/api/settings').json()['savedvariables_path'] == str(second)
+        assert client.get('/api/settings').json()['export_path'] == str(second.with_name('AnvilbookExport.lua'))
         assert client.get('/api/status').json()['found'] is True
 
         installed = client.post('/api/install-addon').json()
         assert installed['installed'].endswith('AddOns/AnvilbookExport')
-        assert client.get('/api/setup').json()['installs'][0]['addon_installed'] is True
-
-
-def test_several_installs_wait_for_a_choice(tmp_path, monkeypatch):
-    data = setup_env(tmp_path, monkeypatch)
-    first, second = game_install(tmp_path, '1#1'), game_install(tmp_path, '2#1')
-
-    with TestClient(create_app(data, watch=False)) as client:
-        setup = client.get('/api/setup').json()
-        assert setup['configured'] is False
-        assert sorted(c['path'] for c in setup['installs']) == sorted([str(first), str(second)])
-
-        assert client.post('/api/setup', json={'savedvariables_path': str(second)}).json()['configured'] is True
-        assert client.get('/api/settings').json()['savedvariables_path'] == str(second)
-        assert client.get('/api/status').json()['found'] is True
+        after = {i['path']: i['addon_installed'] for i in client.post('/api/setup/scan').json()['installs']}
+        assert after == {str(first): False, str(second): True}
 
         missing = client.post('/api/setup', json={'savedvariables_path': str(tmp_path / 'nope.lua')})
         assert missing.status_code == 400
+
+
+def test_a_configured_path_is_reused_without_searching(tmp_path, monkeypatch):
+    data = setup_env(tmp_path, monkeypatch)
+    sv = game_install(tmp_path)
+    (tmp_path / 'config.toml').write_text(f'savedvariables_path = "{sv}"\n')
+    monkeypatch.setattr('anvilbook.app.search_roots', lambda: pytest.fail('should not search'))
+
+    with TestClient(create_app(data, watch=False)) as client:
+        assert client.get('/api/setup').json()['configured'] is True
+        assert client.get('/api/settings').json()['savedvariables_path'] == str(sv)
 
 
 @pytest.fixture

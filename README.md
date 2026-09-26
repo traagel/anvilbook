@@ -44,8 +44,9 @@ uv run anvilbook
 
 ## First run
 
-1. anvilbook looks for World of Warcraft by itself. If it finds one game folder it uses it.
-   If it finds several, pick one on the setup screen.
+1. Point anvilbook at your game. Paste the path to `Auctionator.lua`, or press **Look for my game
+   folder** and pick one of the results. It only searches your disk when you press that button,
+   and it never sends anything anywhere.
 2. Press **Install addon**. That copies the small `AnvilbookExport` addon into the game.
 3. Start WoW. Open each profession window for a few seconds, then type `/reload`.
 4. Scan the auction house with Auctionator, then type `/reload` again.

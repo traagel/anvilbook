@@ -67,14 +67,13 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
             await asyncio.sleep(POLL_SECONDS)
 
     def seed_savedvariables() -> None:
-        """First run: take the path from the config file, or the only install we can find."""
+        """Take the path from the config file. Searching the disk needs a person to ask."""
         if store.settings()['savedvariables_path']:
             return
         configured = load_config().savedvariables_path
-        found = [configured] if configured and configured.is_file() else find_savedvariables(search_roots())
-        if len(found) == 1:
-            log.info('using %s', found[0])
-            use_savedvariables(found[0])
+        if configured and configured.is_file():
+            log.info('using %s', configured)
+            use_savedvariables(configured)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -101,11 +100,18 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
     @app.get('/api/setup')
     def setup():
         settings = store.settings()
+        chosen = Path(settings['savedvariables_path']) if settings['savedvariables_path'] else None
+        return {'configured': bool(chosen), 'installs': [],
+                'savedvariables_path': settings['savedvariables_path'],
+                'addon_installed': bool(chosen and is_installed(chosen)),
+                'config_path': str(config_path()), 'data_dir': str(data_dir)}
+
+    @app.post('/api/setup/scan')
+    def scan():
+        """Looks through the usual game folders. Only ever runs when the person asks for it."""
         installs = [{'path': str(p), 'account': p.parents[1].name, 'flavor': p.parents[4].name,
                      'addon_installed': is_installed(p)} for p in find_savedvariables(search_roots())]
-        return {'configured': bool(settings['savedvariables_path']), 'installs': installs,
-                'savedvariables_path': settings['savedvariables_path'],
-                'config_path': str(config_path()), 'data_dir': str(data_dir)}
+        return {'installs': installs}
 
     @app.post('/api/setup')
     def choose(body: dict = Body(...)):

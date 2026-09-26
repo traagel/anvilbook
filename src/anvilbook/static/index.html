@@ -82,10 +82,13 @@ input[type=text] { width:100%; max-width:40rem; }
     <h2>Set up anvilbook</h2>
     <p>anvilbook reads the auction prices that the Auctionator addon saves, and the recipes your characters know.
        Nothing leaves your computer.</p>
-    <div id="setup-installs"></div>
-    <label>Or paste the path to <code>Auctionator.lua</code>
+    <p>Point it at your game folder. You can paste the path, or let anvilbook look through the usual
+       install folders on this computer.</p>
+    <label>Path to <code>Auctionator.lua</code>
       <input id="setup-path" type="text" placeholder="…/WTF/Account/12345#1/SavedVariables/Auctionator.lua">
     </label>
+    <p><button id="setup-scan">Look for my game folder</button> <span id="setup-scan-note" class="note"></span></p>
+    <div id="setup-installs"></div>
     <p id="setup-error" class="error" hidden></p>
     <button id="setup-save">Use this folder</button>
   </div>
@@ -538,8 +541,30 @@ async function loadCharacters(selectedName, pinnedName) {
   showProfessions();
 }
 
+let lastSetup = {installs: []};
+
 async function loadSetup() {
   const setup = await api('/api/setup');
+  lastSetup = {...setup, installs: lastSetup.installs};
+  $('#setup').hidden = setup.configured;
+  showInstalls();
+  showAddonState(lastSetup);
+  return setup;
+}
+
+$('#setup-scan').onclick = async () => {
+  const note = $('#setup-scan-note');
+  note.textContent = 'Looking…';
+  const found = await api('/api/setup/scan', {method: 'POST'});
+  lastSetup.installs = found.installs;
+  note.textContent = found.installs.length
+    ? `Found ${found.installs.length}.`
+    : 'Nothing found. Paste the path above instead.';
+  showInstalls();
+};
+
+function showInstalls() {
+  const setup = lastSetup;
   const box = $('#setup-installs');
   box.innerHTML = '';
   for (const install of setup.installs) {
@@ -557,24 +582,17 @@ async function loadSetup() {
     label.append(radio, title, path);
     box.appendChild(label);
   }
-  if (!setup.installs.length) {
-    box.textContent = 'No World of Warcraft folder found. Paste the path below.';
-  }
-  $('#setup').hidden = setup.configured;
-  showAddonState(setup);
-  return setup;
 }
 
 function showAddonState(setup) {
-  const current = setup.installs.find(i => i.path === setup.savedvariables_path);
   const box = $('#addon-box');
   box.innerHTML = '';
   box.append(setup.savedvariables_path || 'not chosen yet', ' · ');
-  if (current && current.addon_installed) {
+  if (setup.addon_installed) {
     box.append('Anvilbook Export addon installed. ');
   }
   const button = document.createElement('button');
-  button.textContent = current && current.addon_installed ? 'Reinstall addon' : 'Install addon';
+  button.textContent = setup.addon_installed ? 'Reinstall addon' : 'Install addon';
   button.onclick = async () => {
     try {
       const done = await api('/api/install-addon', {method: 'POST'});
