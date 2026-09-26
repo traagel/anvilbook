@@ -375,8 +375,17 @@ def test_bad_settings_are_rejected(env):
 def test_sharing_is_off_until_asked(env):
     client, _ = env
     share = client.get('/api/share').json()
-    assert share == {'server_url': '', 'username': '', 'signed_in': False,
+    # A server address is filled in, which shares nothing on its own.
+    assert share == {'server_url': 'https://anvilbook.traagel.dev', 'username': '', 'signed_in': False,
                      'push_prices': False, 'published_characters': {}}
+
+
+def test_the_server_address_comes_from_the_settings(env):
+    client, _ = env
+    client.put('/api/settings', json={'server_url': 'https://exa mple.com'})
+    response = client.post('/api/share/login', json={'username': 'thordak', 'password': 'a long password'})
+    assert response.status_code == 400
+    assert response.json()['detail']
 
 
 def test_a_failed_push_does_not_break_the_import(env, monkeypatch):
@@ -420,8 +429,8 @@ def test_a_failed_unpublish_keeps_the_switch_on(env, monkeypatch):
 
 def test_a_mistyped_server_address_is_explained_not_a_500(env):
     client, _ = env
-    response = client.post('/api/share/login', json={'server_url': 'https://exa mple.com',
-                                                     'username': 'thordak', 'password': 'a long password'})
+    client.put('/api/settings', json={'server_url': 'https://[::1'})
+    response = client.post('/api/share/login', json={'username': 'thordak', 'password': 'a long password'})
     assert response.status_code == 400
     assert response.json()['detail']
 

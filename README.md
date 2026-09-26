@@ -120,7 +120,9 @@ Your gold, your bags and your disenchant results are never uploaded. An account 
 username and a password; there is no email and no password reset. "Delete my account and
 everything I sent" removes all of it.
 
-To run your own server, see [docs/server.md](docs/server.md).
+Sharing goes to <https://anvilbook.traagel.dev>, which also shows the shared prices and crafting
+profits on the web. To use a different server, set **Sharing server** in the Settings tab. To run
+your own, see [docs/server.md](docs/server.md).
 
 ## Known limits
 

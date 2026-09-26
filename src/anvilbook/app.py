@@ -301,13 +301,15 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
                 'published_characters': s['published_characters']}
 
     def _sign_in(body: dict, register: bool) -> dict:
-        url, username = str(body.get('server_url') or ''), str(body.get('username') or '')
+        # The address is a setting, so a person who never opens Settings shares with the
+        # server the app ships with.
+        url, username = str(store.settings()['server_url'] or ''), str(body.get('username') or '')
         try:
             client = PushClient(url)
             token = (client.register if register else client.login)(username, str(body.get('password') or ''))
         except PushError as e:
             raise HTTPException(400, str(e))
-        store.save_settings({'server_url': url, 'server_username': username, 'server_token': token})
+        store.save_settings({'server_username': username, 'server_token': token})
         return {'signed_in': True, 'username': username}
 
     @app.post('/api/share/login')

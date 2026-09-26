@@ -22,7 +22,7 @@ DEFAULT_SETTINGS = {
     'assume_enchanter': False,
     'disenchant_table': DEFAULT_TABLE,
     'min_disenchant_samples': 20,
-    'server_url': '',
+    'server_url': 'https://anvilbook.traagel.dev',
     'server_username': '',
     'server_token': '',
     'push_prices': False,

@@ -153,9 +153,7 @@ input[type=text] { width:100%; max-width:40rem; }
       <h3>Share your prices</h3>
       <p class="note">Nothing leaves this computer until you turn on a switch below. You can turn
         them off again at any time, and delete everything you sent.</p>
-      <label>Server address
-        <input id="share-url" type="text" placeholder="https://anvilbook.example.com">
-      </label>
+      <p class="note">Sharing with <b id="share-url"></b>. Another server goes in Settings.</p>
       <p id="share-error" class="error" hidden></p>
       <div id="share-signin">
         <p class="note">No email is used, and there is no password reset. If you forget the
@@ -494,6 +492,7 @@ async function loadSettings() {
   field('min_scan_items', 'Min items seen for a save to count as a full scan', 'number');
   field('cast_seconds', 'Cast seconds', 'number');
   field('ah_cut', 'AH cut (0.05 = 5%)', 'number');
+  field('server_url', 'Sharing server (optional, only used once you sign in on the Share tab)', 'text');
   const save = document.createElement('button');
   save.textContent = 'Save';
   const msg = document.createElement('span');
@@ -696,7 +695,7 @@ let share = {published_characters: {}};
 
 async function loadShare() {
   share = await api('/api/share');
-  $('#share-url').value = share.server_url;
+  $('#share-url').textContent = share.server_url || 'no server set';
   $('#share-signin').hidden = share.signed_in;
   $('#share-account').hidden = !share.signed_in;
   $('#share-who').textContent = share.username;
@@ -743,8 +742,7 @@ async function signIn(path) {
   shareError('');
   try {
     await api(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
-                     body: JSON.stringify({server_url: $('#share-url').value.trim(),
-                                           username: $('#share-user').value.trim(),
+                     body: JSON.stringify({username: $('#share-user').value.trim(),
                                            password: $('#share-pass').value})});
     $('#share-pass').value = '';
     await loadShare();
