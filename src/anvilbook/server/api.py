@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from ..items import load_items
 from .auth import check_password, check_username, hash_password, new_token, token_hash, verify_password
@@ -13,6 +15,7 @@ from .read_api import add_read_routes
 
 log = logging.getLogger(__name__)
 PREFIX = 'Bearer '
+STATIC = Path(__file__).parent / 'static'
 
 
 def create_server(database: Database | None = None, data_dir: Path | None = None) -> FastAPI:
@@ -91,6 +94,13 @@ def create_server(database: Database | None = None, data_dir: Path | None = None
     add_push_routes(app, db, current_user)
     add_read_routes(app, db)
     add_crafts_route(app, db, items_loader)
+
+    @app.get('/')
+    def index():
+        return FileResponse(STATIC / 'index.html')
+
+    # Mounted last: a mount swallows every path registered after it.
+    app.mount('/', StaticFiles(directory=STATIC), name='site')
 
     return app
 
