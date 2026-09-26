@@ -1,6 +1,7 @@
 <img src="docs/logo.svg" alt="anvilbook" width="260">
 
 [![tests](https://github.com/traagel/anvilbook/actions/workflows/test.yml/badge.svg)](https://github.com/traagel/anvilbook/actions/workflows/test.yml)
+[![pypi](https://img.shields.io/pypi/v/anvilbook)](https://pypi.org/project/anvilbook/)
 [![release](https://img.shields.io/github/v/release/traagel/anvilbook)](https://github.com/traagel/anvilbook/releases)
 [![downloads](https://img.shields.io/github/downloads/traagel/anvilbook/total)](https://github.com/traagel/anvilbook/releases)
 [![licence](https://img.shields.io/github/license/traagel/anvilbook)](LICENSE)
