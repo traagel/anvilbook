@@ -13,7 +13,7 @@ It reads the prices that the [Auctionator](https://www.curseforge.com/wow/addons
 addon saves, keeps every scan as history, and tells you what is worth crafting with the
 recipes your characters actually know.
 
-Everything runs on your own computer. Nothing is uploaded anywhere.
+Everything runs on your own computer. Nothing is uploaded unless you turn on sharing.
 
 ## What it does
 
@@ -106,6 +106,22 @@ open_browser = true
 Data lives in `~/.local/share/anvilbook/` (Windows: `%APPDATA%\anvilbook\`): the price
 history database and a cached copy of the item database.
 
+## Sharing (optional)
+
+Sharing is off. The app uploads nothing until you turn on a switch in the **Share** tab, and
+each switch is separate:
+
+- **Send my price scans** uploads, after each import, the realm, the time of the scan, and one
+  row per item: its id, the lowest price, and how many are listed.
+- **Publish what this character can craft**, per character, uploads that character's name, its
+  professions with skill levels, and the recipes it knows.
+
+Your gold, your bags and your disenchant results are never uploaded. An account needs only a
+username and a password; there is no email and no password reset. "Delete my account and
+everything I sent" removes all of it.
+
+To run your own server, see [docs/server.md](docs/server.md).
+
 ## Known limits
 
 - Built for **WoW Forever beta, client 1.60.1**, with an **English** client.
@@ -118,13 +134,13 @@ history database and a cached copy of the item database.
 ## Development
 
 ```bash
-uv run pytest                 # 98 tests
+uv run pytest                 # the app; the server tests skip without a database
 luajit tests/addon_harness.lua src/anvilbook/addon/AnvilbookExport/AnvilbookExport.lua
 luajit tests/addon_harness_modern.lua src/anvilbook/addon/AnvilbookExport/AnvilbookExport.lua
 ```
 
 The addon harnesses stub the WoW API, so they need [LuaJIT](https://luajit.org/) but not the
-game.
+game. The server tests need Postgres; see [docs/server.md](docs/server.md).
 
 ## Credits
 
