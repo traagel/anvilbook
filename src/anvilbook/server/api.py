@@ -1,9 +1,12 @@
 import logging
 import os
+from pathlib import Path
 
 from fastapi import Body, Depends, FastAPI, Header, HTTPException
 
+from ..items import load_items
 from .auth import check_password, check_username, hash_password, new_token, token_hash, verify_password
+from .crafts_api import add_crafts_route
 from .db import Database
 from .push_api import add_push_routes
 from .read_api import add_read_routes
@@ -12,9 +15,18 @@ log = logging.getLogger(__name__)
 PREFIX = 'Bearer '
 
 
-def create_server(database: Database | None = None) -> FastAPI:
+def create_server(database: Database | None = None, data_dir: Path | None = None) -> FastAPI:
     db: Database = database or Database()
+    items_dir = Path(data_dir or os.environ.get('ANVILBOOK_DATA') or '/data')
+    cache: dict[str, dict] = {}
     app = FastAPI(title='anvilbook server')
+
+    def items_loader() -> dict:
+        # Created here, not at startup: the tests that never ask for crafts must not need /data.
+        if 'items' not in cache:
+            items_dir.mkdir(parents=True, exist_ok=True)
+            cache['items'] = load_items(items_dir / 'items.json')
+        return cache['items']
 
     @app.get('/healthz')
     def healthz():
@@ -78,6 +90,7 @@ def create_server(database: Database | None = None) -> FastAPI:
 
     add_push_routes(app, db, current_user)
     add_read_routes(app, db)
+    add_crafts_route(app, db, items_loader)
 
     return app
 
