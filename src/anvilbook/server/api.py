@@ -5,6 +5,7 @@ from fastapi import Body, Depends, FastAPI, Header, HTTPException
 
 from .auth import check_password, check_username, hash_password, new_token, token_hash, verify_password
 from .db import Database
+from .push_api import add_push_routes
 
 log = logging.getLogger(__name__)
 PREFIX = 'Bearer '
@@ -73,6 +74,8 @@ def create_server(database: Database | None = None) -> FastAPI:
     def delete_account(user: dict = Depends(current_user)):
         db.execute('DELETE FROM users WHERE id = %s', (user['id'],))
         return {'ok': True}
+
+    add_push_routes(app, db, current_user)
 
     return app
 
