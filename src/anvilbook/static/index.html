@@ -84,8 +84,11 @@ input[type=text] { width:100%; max-width:40rem; }
        Nothing leaves your computer.</p>
     <p>Point it at your game folder. You can paste the path, or let anvilbook look through the usual
        install folders on this computer.</p>
+    <p class="note">The file lives in <code>World of Warcraft\_classic_beta_\WTF\Account\&lt;your id&gt;\SavedVariables</code>,
+       not in the AddOns folder. It appears after Auctionator saves for the first time, so if it is missing,
+       log in and type <code>/reload</code>. You can also give the <code>SavedVariables</code> folder itself.</p>
     <label>Path to <code>Auctionator.lua</code>
-      <input id="setup-path" type="text" placeholder="…/WTF/Account/12345#1/SavedVariables/Auctionator.lua">
+      <input id="setup-path" type="text" placeholder="…\WTF\Account\12345#1\SavedVariables\Auctionator.lua">
     </label>
     <p><button id="setup-scan">Look for my game folder</button> <span id="setup-scan-note" class="note"></span></p>
     <div id="setup-installs"></div>
@@ -554,13 +557,21 @@ async function loadSetup() {
 
 $('#setup-scan').onclick = async () => {
   const note = $('#setup-scan-note');
-  note.textContent = 'Looking…';
-  const found = await api('/api/setup/scan', {method: 'POST'});
-  lastSetup.installs = found.installs;
-  note.textContent = found.installs.length
-    ? `Found ${found.installs.length}.`
-    : 'Nothing found. Paste the path above instead.';
-  showInstalls();
+  const button = $('#setup-scan');
+  note.textContent = 'Looking through the usual game folders…';
+  button.disabled = true;
+  try {
+    const found = await api('/api/setup/scan', {method: 'POST'});
+    lastSetup.installs = found.installs;
+    note.textContent = found.installs.length
+      ? `Found ${found.installs.length}.`
+      : 'Nothing found. Paste the path above instead.';
+    showInstalls();
+  } catch (err) {
+    note.textContent = 'The search failed: ' + err.message;
+  } finally {
+    button.disabled = false;
+  }
 };
 
 function showInstalls() {
@@ -578,7 +589,9 @@ function showInstalls() {
     const title = document.createElement('b');
     title.textContent = ` ${install.flavor} · account ${install.account}`;
     const path = document.createElement('span');
-    path.textContent = install.path;
+    path.textContent = install.has_prices === false
+      ? `${install.folder} — Auctionator has not saved prices here yet`
+      : install.path;
     label.append(radio, title, path);
     box.appendChild(label);
   }

@@ -55,6 +55,16 @@ uv run anvilbook
 1. Point anvilbook at your game. Paste the path to `Auctionator.lua`, or press **Look for my game
    folder** and pick one of the results. It only searches your disk when you press that button,
    and it never sends anything anywhere.
+
+   The file you want is the **saved data**, here:
+
+   ```
+   World of Warcraft\_classic_beta_\WTF\Account\<your id>\SavedVariables\Auctionator.lua
+   ```
+
+   Not the one inside `Interface\AddOns\Auctionator\`, which is Auctionator's own code. If the
+   file is missing, Auctionator has not saved yet: log in, type `/reload`, and it appears. You can
+   also point anvilbook at the `SavedVariables` folder itself.
 2. Press **Install addon**. That copies the small `AnvilbookExport` addon into the game, so you
    do not have to download or move anything. See below if you would rather install it yourself.
 3. Start WoW, or log out to the character screen if it was already running, so the game picks up

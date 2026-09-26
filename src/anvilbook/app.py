@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import config_path, load_config, write_config
 from .craft import Calculator, CraftSettings
 from .disenchant import effective_table, observed, parse_records
-from .discover import find_savedvariables, search_roots
+from .discover import find_installs, looks_like_addon_code, search_roots
 from .installer import install_addon, is_installed
 from .items import load_items
 from .luatable import LuaParseError, parse_savedvariables
@@ -109,19 +109,28 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
                 'config_path': str(config_path()), 'data_dir': str(data_dir)}
 
     @app.post('/api/setup/scan')
-    def scan():
+    async def scan():
         """Looks through the usual game folders. Only ever runs when the person asks for it."""
-        installs = [{'path': str(p), 'account': p.parents[1].name, 'flavor': p.parents[4].name,
-                     'addon_installed': is_installed(p)} for p in find_savedvariables(search_roots())]
+        found = await asyncio.to_thread(find_installs, search_roots())
+        installs = [{'path': str(i.auctionator), 'folder': str(i.savedvariables), 'account': i.account,
+                     'flavor': i.flavor, 'has_prices': i.has_prices,
+                     'addon_installed': is_installed(i.auctionator)} for i in found]
         return {'installs': installs}
 
     @app.post('/api/setup')
     def choose(body: dict = Body(...)):
         path = Path(str(body.get('savedvariables_path') or '')).expanduser()
-        if not path.is_file():
-            raise HTTPException(400, f'{path} does not exist')
+        if path.is_dir():
+            path = path / 'Auctionator.lua'
+        if looks_like_addon_code(path):
+            raise HTTPException(400, 'That is Auctionator\'s own code. The file we need is the saved data, '
+                                     'under WTF\\Account\\<your id>\\SavedVariables')
+        if not path.parent.is_dir():
+            raise HTTPException(400, f'{path.parent} does not exist')
+        if path.parent.name != 'SavedVariables':
+            raise HTTPException(400, 'Pick the Auctionator.lua inside a SavedVariables folder')
         use_savedvariables(path)
-        return {'configured': True, **importer.status}
+        return {'configured': True, 'waiting_for_prices': not path.is_file(), **importer.status}
 
     @app.post('/api/install-addon')
     def add_addon():

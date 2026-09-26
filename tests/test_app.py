@@ -60,6 +60,7 @@ def test_nothing_is_searched_until_asked(tmp_path, monkeypatch):
         assert scans == ['searched']
         assert [i['path'] for i in found['installs']] == [str(sv)]
         assert found['installs'][0]['addon_installed'] is False
+        assert found['installs'][0]['has_prices'] is True
         assert client.get('/api/settings').json()['savedvariables_path'] == ''
 
 
@@ -84,6 +85,23 @@ def test_choosing_a_folder_configures_the_app(tmp_path, monkeypatch):
 
         missing = client.post('/api/setup', json={'savedvariables_path': str(tmp_path / 'nope.lua')})
         assert missing.status_code == 400
+
+
+def test_setup_accepts_the_folder_and_warns_about_addon_code(tmp_path, monkeypatch):
+    data = setup_env(tmp_path, monkeypatch)
+    sv = game_install(tmp_path)
+
+    with TestClient(create_app(data, watch=False)) as client:
+        folder = client.post('/api/setup', json={'savedvariables_path': str(sv.parent)})
+        assert folder.status_code == 200
+        assert client.get('/api/settings').json()['savedvariables_path'] == str(sv)
+
+        code = tmp_path / 'wow-1#1' / '_classic_beta_' / 'Interface' / 'AddOns' / 'Auctionator' / 'Source'
+        code.mkdir(parents=True)
+        (code / 'Auctionator.lua').write_text('-- addon code')
+        wrong = client.post('/api/setup', json={'savedvariables_path': str(code / 'Auctionator.lua')})
+        assert wrong.status_code == 400
+        assert 'SavedVariables' in wrong.json()['detail']
 
 
 def test_a_configured_path_is_reused_without_searching(tmp_path, monkeypatch):
