@@ -107,6 +107,15 @@ def test_load_export_picks_a_named_character(tmp_path):
     assert unknown is not None and unknown.character == 'Thordak - Classic Beta PvP'
 
 
+def test_a_character_that_is_only_playing_counts_as_most_recent(tmp_path):
+    path = tmp_path / 'AnvilbookExport.lua'
+    path.write_bytes(EXPORT.replace(
+        b'["Old - Realm"] = {\r\n["updated"] = 100,',
+        b'["Old - Realm"] = {\r\n["updated"] = 100,\r\n["bagsUpdated"] = 300,'))
+    latest = load_export(path)
+    assert latest is not None and latest.character == 'Old - Realm'
+
+
 def test_load_export_without_data(tmp_path):
     assert load_export(tmp_path / 'missing.lua') is None
     empty = tmp_path / 'empty.lua'

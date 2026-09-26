@@ -41,6 +41,18 @@ nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #plan-result .verdict b { color:var(--accent); }
 #plan-result h4 { margin:1rem 0 .3rem; color:var(--muted); font-size:12px; font-weight:600; }
 :focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+#setup { position:fixed; inset:0; background:var(--bg); z-index:10; overflow:auto; padding:3rem 1rem; }
+#setup .card { max-width:38rem; margin:0 auto; }
+#setup h2 { color:var(--accent); font-size:1.4rem; margin:0 0 .5rem; }
+#setup p { color:var(--muted); }
+#setup .install { display:block; border:1px solid var(--line); border-radius:2px; padding:.5rem .7rem; margin:.4rem 0;
+  cursor:pointer; }
+#setup .install:has(:checked) { border-color:var(--accent); }
+#setup .install b { color:var(--fg); font-weight:600; }
+#setup .install span { color:var(--muted); font-size:12px; display:block; word-break:break-all; }
+#setup .error { color:var(--bad); }
+#quit { margin-left:.5rem; }
+#addon-box { color:var(--muted); font-size:12px; }
 main { padding:1rem; }
 section { display:none; }
 section.active { display:block; }
@@ -65,6 +77,19 @@ input[type=text] { width:100%; max-width:40rem; }
 </style>
 </head>
 <body>
+<div id="setup" hidden>
+  <div class="card">
+    <h2>Set up anvilbook</h2>
+    <p>anvilbook reads the auction prices that the Auctionator addon saves, and the recipes your characters know.
+       Nothing leaves your computer.</p>
+    <div id="setup-installs"></div>
+    <label>Or paste the path to <code>Auctionator.lua</code>
+      <input id="setup-path" type="text" placeholder="…/WTF/Account/12345#1/SavedVariables/Auctionator.lua">
+    </label>
+    <p id="setup-error" class="error" hidden></p>
+    <button id="setup-save">Use this folder</button>
+  </div>
+</div>
 <header>
   <h1>anvilbook</h1>
   <nav>
@@ -76,6 +101,7 @@ input[type=text] { width:100%; max-width:40rem; }
   </nav>
   <button id="import">Import now</button>
   <span id="status"></span>
+  <button id="quit" title="Stop anvilbook">Quit</button>
 </header>
 <div id="who">
   <div id="characters" role="group" aria-label="Character"></div>
@@ -110,6 +136,8 @@ input[type=text] { width:100%; max-width:40rem; }
     <div class="wrap"><table id="st-table"></table></div>
   </section>
   <section id="settings">
+    <h3>Game folder</h3>
+    <p id="addon-box"></p>
     <h3>Measured disenchants</h3>
     <p class="note">Results recorded in game. A group replaces the table below once it has enough samples.</p>
     <div class="wrap"><table id="de-table"></table></div>
@@ -510,14 +538,95 @@ async function loadCharacters(selectedName, pinnedName) {
   showProfessions();
 }
 
+async function loadSetup() {
+  const setup = await api('/api/setup');
+  const box = $('#setup-installs');
+  box.innerHTML = '';
+  for (const install of setup.installs) {
+    const label = document.createElement('label');
+    label.className = 'install';
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'install';
+    radio.value = install.path;
+    radio.checked = install.path === setup.savedvariables_path || setup.installs.length === 1;
+    const title = document.createElement('b');
+    title.textContent = ` ${install.flavor} · account ${install.account}`;
+    const path = document.createElement('span');
+    path.textContent = install.path;
+    label.append(radio, title, path);
+    box.appendChild(label);
+  }
+  if (!setup.installs.length) {
+    box.textContent = 'No World of Warcraft folder found. Paste the path below.';
+  }
+  $('#setup').hidden = setup.configured;
+  showAddonState(setup);
+  return setup;
+}
+
+function showAddonState(setup) {
+  const current = setup.installs.find(i => i.path === setup.savedvariables_path);
+  const box = $('#addon-box');
+  box.innerHTML = '';
+  box.append(setup.savedvariables_path || 'not chosen yet', ' · ');
+  if (current && current.addon_installed) {
+    box.append('Anvilbook Export addon installed. ');
+  }
+  const button = document.createElement('button');
+  button.textContent = current && current.addon_installed ? 'Reinstall addon' : 'Install addon';
+  button.onclick = async () => {
+    try {
+      const done = await api('/api/install-addon', {method: 'POST'});
+      button.after(` Installed to ${done.installed}. Restart WoW to load it.`);
+      loadSetup();
+    } catch (err) {
+      button.after(' ' + err.message);
+    }
+  };
+  box.appendChild(button);
+  const change = document.createElement('button');
+  change.textContent = 'Change folder';
+  change.onclick = () => { $('#setup').hidden = false; };
+  box.append(' ', change);
+}
+
+$('#setup-save').onclick = async () => {
+  const chosen = document.querySelector('#setup-installs input:checked');
+  const path = $('#setup-path').value.trim() || (chosen && chosen.value);
+  const error = $('#setup-error');
+  error.hidden = true;
+  if (!path) { error.textContent = 'Pick a folder or paste a path.'; error.hidden = false; return; }
+  try {
+    await api('/api/setup', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                             body: JSON.stringify({savedvariables_path: path})});
+  } catch (err) {
+    error.textContent = err.message;
+    error.hidden = false;
+    return;
+  }
+  lastScans = null;
+  await loadSetup();
+  refreshStatus();
+  loadSettings();
+};
+
+$('#quit').onclick = async () => {
+  if (!confirm('Stop anvilbook? The page will stop working until you start it again.')) return;
+  await fetch('/api/quit', {method: 'POST'}).catch(() => {});
+  document.body.innerHTML = '<p style="padding:2rem">anvilbook has stopped. You can close this tab.</p>';
+};
+
 let lastScans = null;
 async function refreshStatus() {
   try {
     const s = await api('/api/status');
     const el = $('#status');
     const missing = s.pinned && s.export && s.export.character !== s.pinned;
+    const empty = s.export && !Object.keys(s.export.professions).length;
     el.textContent = s.last_error
       || (missing ? `${s.pinned} has no recipes yet. Showing ${s.export.character}. Open a profession window on them, then /reload` : '')
+      || (empty ? `${s.export.character} has no recipes yet. Open a profession window in game, then /reload` : '')
       || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`
       + (s.export ? '' : '. No recipes yet: open a profession window in game, then /reload');
     el.className = s.last_error ? 'error' : '';
@@ -543,6 +652,7 @@ function showTab(name) {
 }
 for (const b of document.querySelectorAll('nav button')) b.onclick = () => showTab(b.dataset.tab);
 
+loadSetup();
 refreshStatus();
 loadSettings();
 setInterval(refreshStatus, 5000);

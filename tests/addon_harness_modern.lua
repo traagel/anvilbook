@@ -161,8 +161,9 @@ C_Container.GetContainerItemInfo = function(bag, slot)
   if bag == 0 and slot == 2 then return {itemID = 3490, stackCount = 1} end
 end
 handler(frame, "BAG_UPDATE_DELAYED")
-local bags = AnvilbookExportDB.characters["Thordak - Classic Beta PvP"].bags
-assert(bags and bags[2841] == 19 and bags[3490] == 1, "bag contents recorded")
+local bagChar = AnvilbookExportDB.characters["Thordak - Classic Beta PvP"]
+assert(bagChar.bags and bagChar.bags[2841] == 19 and bagChar.bags[3490] == 1, "bag contents recorded")
+assert(bagChar.updated and bagChar.updated > 0, "playing marks the character as recently used")
 
 handler(frame, "UNIT_SPELLCAST_SENT", "player", "Deadly Bronze Poniard", "cast-1", 13262)
 handler(frame, "LOOT_OPENED")

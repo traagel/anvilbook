@@ -284,6 +284,8 @@ local function recordBags()
   local char = character()
   char.bags = bags
   char.bagsUpdated = time()
+  -- Bags change while playing, which is what "last played" means.
+  char.updated = char.bagsUpdated
 end
 
 local function recordDisenchant()

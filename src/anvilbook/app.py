@@ -1,6 +1,9 @@
 import asyncio
 import logging
 import os
+import signal
+import threading
+import webbrowser
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -9,8 +12,11 @@ import uvicorn
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 
+from .config import config_path, load_config, write_config
 from .craft import Calculator, CraftSettings
 from .disenchant import effective_table, observed, parse_records
+from .discover import find_savedvariables, search_roots
+from .installer import install_addon, is_installed
 from .items import load_items
 from .luatable import LuaParseError, parse_savedvariables
 from .plan import for_budget, plan_for
@@ -60,9 +66,20 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
                 log.exception('watcher step failed')
             await asyncio.sleep(POLL_SECONDS)
 
+    def seed_savedvariables() -> None:
+        """First run: take the path from the config file, or the only install we can find."""
+        if store.settings()['savedvariables_path']:
+            return
+        configured = load_config().savedvariables_path
+        found = [configured] if configured and configured.is_file() else find_savedvariables(search_roots())
+        if len(found) == 1:
+            log.info('using %s', found[0])
+            use_savedvariables(found[0])
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         await asyncio.to_thread(items)
+        await asyncio.to_thread(seed_savedvariables)
         task = asyncio.create_task(watch_loop()) if watch else None
         yield
         if task:
@@ -73,6 +90,49 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
     @app.get('/')
     def index():
         return FileResponse(STATIC / 'index.html')
+
+    def use_savedvariables(path: Path) -> dict:
+        settings = store.save_settings({'savedvariables_path': str(path),
+                                        'export_path': str(path.with_name('AnvilbookExport.lua'))})
+        write_config(savedvariables_path=str(path))
+        importer.run(force=True)
+        return settings
+
+    @app.get('/api/setup')
+    def setup():
+        settings = store.settings()
+        installs = [{'path': str(p), 'account': p.parents[1].name, 'flavor': p.parents[4].name,
+                     'addon_installed': is_installed(p)} for p in find_savedvariables(search_roots())]
+        return {'configured': bool(settings['savedvariables_path']), 'installs': installs,
+                'savedvariables_path': settings['savedvariables_path'],
+                'config_path': str(config_path()), 'data_dir': str(data_dir)}
+
+    @app.post('/api/setup')
+    def choose(body: dict = Body(...)):
+        path = Path(str(body.get('savedvariables_path') or '')).expanduser()
+        if not path.is_file():
+            raise HTTPException(400, f'{path} does not exist')
+        use_savedvariables(path)
+        return {'configured': True, **importer.status}
+
+    @app.post('/api/install-addon')
+    def add_addon():
+        path = Path(store.settings()['savedvariables_path'] or '')
+        if not path.is_file():
+            raise HTTPException(400, 'Choose your World of Warcraft folder first')
+        try:
+            return {'installed': str(install_addon(path))}
+        except (FileExistsError, OSError) as e:
+            raise HTTPException(400, str(e))
+
+    @app.post('/api/quit')
+    async def quit_app():
+        async def stop():
+            await asyncio.sleep(0.2)
+            os.kill(os.getpid(), signal.SIGINT)
+
+        asyncio.create_task(stop())
+        return {'stopping': True}
 
     @app.get('/api/status')
     def status():
@@ -193,5 +253,11 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
 
 
 def run() -> None:
-    logging.basicConfig(level=logging.INFO)
-    uvicorn.run(create_app(), host='127.0.0.1', port=int(os.environ.get('ANVILBOOK_PORT', 8765)))
+    logging.basicConfig(level=logging.INFO, format='%(message)s')
+    config = load_config()
+    port = int(os.environ.get('ANVILBOOK_PORT') or config.port)
+    url = f'http://{config.host}:{port}/'
+    if config.open_browser and os.environ.get('ANVILBOOK_NO_BROWSER') != '1':
+        threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    print(f'anvilbook is running. Open {url} in your browser. Press Ctrl+C to stop.')
+    uvicorn.run(create_app(config.data_dir), host=config.host, port=port, log_level='warning')

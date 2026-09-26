@@ -7,14 +7,9 @@ from pathlib import Path
 from .disenchant import DEFAULT_TABLE
 from .importer import Snapshot
 
-WOW_SAVEDVARIABLES = (
-    Path.home() / '.local/share/Steam/steamapps/compatdata/2625793156/pfx/drive_c/Program Files (x86)'
-    / 'World of Warcraft/_classic_beta_/WTF/Account/1111708535#1/SavedVariables/Auctionator.lua'
-)
-
 DEFAULT_SETTINGS = {
-    'savedvariables_path': str(WOW_SAVEDVARIABLES),
-    'export_path': str(WOW_SAVEDVARIABLES.with_name('AnvilbookExport.lua')),
+    'savedvariables_path': '',
+    'export_path': '',
     'character': None,
     'realm': None,
     'skills': {'Blacksmithing': 120, 'Mining': 99},

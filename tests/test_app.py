@@ -26,8 +26,62 @@ ITEMS = [
 PRICES = {2770: 57, 2771: 200, 2840: 73, 3576: 248, 2841: 220, 3490: 17500}
 
 
+def game_install(tmp_path, account='1#1'):
+    game = tmp_path / f'wow-{account}' / '_classic_beta_' / 'WTF' / 'Account' / account / 'SavedVariables'
+    game.mkdir(parents=True)
+    sv = game / 'Auctionator.lua'
+    sv.write_bytes(savedvariables({str(i): entry(p, 2453, 100) for i, p in PRICES.items()}))
+    return sv
+
+
+def setup_env(tmp_path, monkeypatch):
+    data = tmp_path / 'data'
+    data.mkdir()
+    (data / 'items.json').write_text(json.dumps(ITEMS))
+    monkeypatch.setenv('ANVILBOOK_CONFIG', str(tmp_path / 'config.toml'))
+    monkeypatch.setattr('anvilbook.app.search_roots', lambda: [tmp_path])
+    return data
+
+
+def test_a_single_install_is_used_without_asking(tmp_path, monkeypatch):
+    data = setup_env(tmp_path, monkeypatch)
+    sv = game_install(tmp_path)
+
+    with TestClient(create_app(data, watch=False)) as client:
+        setup = client.get('/api/setup').json()
+        assert setup['configured'] is True
+        assert setup['savedvariables_path'] == str(sv)
+        assert setup['installs'][0]['addon_installed'] is False
+        assert client.get('/api/settings').json()['export_path'] == str(sv.with_name('AnvilbookExport.lua'))
+        assert client.get('/api/status').json()['found'] is True
+
+        installed = client.post('/api/install-addon').json()
+        assert installed['installed'].endswith('AddOns/AnvilbookExport')
+        assert client.get('/api/setup').json()['installs'][0]['addon_installed'] is True
+
+
+def test_several_installs_wait_for_a_choice(tmp_path, monkeypatch):
+    data = setup_env(tmp_path, monkeypatch)
+    first, second = game_install(tmp_path, '1#1'), game_install(tmp_path, '2#1')
+
+    with TestClient(create_app(data, watch=False)) as client:
+        setup = client.get('/api/setup').json()
+        assert setup['configured'] is False
+        assert sorted(c['path'] for c in setup['installs']) == sorted([str(first), str(second)])
+
+        assert client.post('/api/setup', json={'savedvariables_path': str(second)}).json()['configured'] is True
+        assert client.get('/api/settings').json()['savedvariables_path'] == str(second)
+        assert client.get('/api/status').json()['found'] is True
+
+        missing = client.post('/api/setup', json={'savedvariables_path': str(tmp_path / 'nope.lua')})
+        assert missing.status_code == 400
+
+
 @pytest.fixture
-def env(tmp_path):
+def env(tmp_path, monkeypatch):
+    # Without this the tests would find, and import, the real game on this machine.
+    monkeypatch.setattr('anvilbook.app.search_roots', lambda: [])
+    monkeypatch.setenv('ANVILBOOK_CONFIG', str(tmp_path / 'config.toml'))
     data = tmp_path / 'data'
     data.mkdir()
     (data / 'items.json').write_text(json.dumps(ITEMS))

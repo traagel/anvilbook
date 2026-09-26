@@ -31,7 +31,9 @@ def load_exports(path: Path) -> list[GameExport]:
     for name, char in (chars or {}).items():
         professions = {ALIASES.get(str(p), str(p)): data for p, data in (char.get('professions') or {}).items()}
         bags = {int(i): int(n) for i, n in (char.get('bags') or {}).items()}
-        out.append(GameExport(str(name), int(char.get('updated') or 0), professions, bags))
+        # Bag updates happen while playing, so they are the better "last seen" signal.
+        seen = max(int(char.get('updated') or 0), int(char.get('bagsUpdated') or 0))
+        out.append(GameExport(str(name), seen, professions, bags))
     return sorted(out, key=lambda e: -e.updated)
 
 
