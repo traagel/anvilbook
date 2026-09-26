@@ -1,5 +1,11 @@
 <img src="docs/logo.svg" alt="anvilbook" width="260">
 
+[![tests](https://github.com/traagel/anvilbook/actions/workflows/test.yml/badge.svg)](https://github.com/traagel/anvilbook/actions/workflows/test.yml)
+[![release](https://img.shields.io/github/v/release/traagel/anvilbook)](https://github.com/traagel/anvilbook/releases)
+[![downloads](https://img.shields.io/github/downloads/traagel/anvilbook/total)](https://github.com/traagel/anvilbook/releases)
+[![licence](https://img.shields.io/github/license/traagel/anvilbook)](LICENSE)
+![python](https://img.shields.io/badge/python-3.12%2B-blue)
+
 A local auction house and crafting ledger for **WoW Forever (Classic beta)**.
 
 It reads the prices that the [Auctionator](https://www.curseforge.com/wow/addons/auctionator)
