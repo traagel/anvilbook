@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anvilbook
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: anvilbook}
+  template:
+    metadata:
+      labels: {app: anvilbook}
+    spec:
+      containers:
+        - name: anvilbook
+          image: ghcr.io/traagel/anvilbook-server:latest
+          ports: [{containerPort: 8000}]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: anvilbook, key: database-url}
+          volumeMounts:
+            - {name: data, mountPath: /data}
+          livenessProbe:
+            httpGet: {path: /healthz, port: 8000}
+            initialDelaySeconds: 20
+          readinessProbe:
+            httpGet: {path: /healthz, port: 8000}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: anvilbook-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: anvilbook
+spec:
+  selector: {app: anvilbook}
+  ports: [{port: 80, targetPort: 8000}]
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: anvilbook-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: {storage: 1Gi}

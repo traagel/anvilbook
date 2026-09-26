@@ -21,12 +21,16 @@ dependencies = [
     "cbor2>=5.6",
 ]
 
+[project.optional-dependencies]
+server = ["psycopg[binary]>=3.2"]
+
 [project.urls]
 Homepage = "https://github.com/traagel/anvilbook"
 Issues = "https://github.com/traagel/anvilbook/issues"
 
 [project.scripts]
 anvilbook = "anvilbook.app:run"
+anvilbook-server = "anvilbook.server.api:run"
 
 [dependency-groups]
 dev = [
