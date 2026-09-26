@@ -1,4 +1,4 @@
-# anvilbook
+<img src="docs/logo.svg" alt="anvilbook" width="260">
 
 A local auction house and crafting ledger for **WoW Forever (Classic beta)**.
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>anvilbook</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='2' fill='%23b8860b'/><path d='M3 8.5h10l-2 3.5H5z' fill='%2316161a'/></svg>">
+<link rel="icon" href="logo.svg">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
 <script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
 <style>
@@ -14,7 +14,7 @@
 }
 body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
 header { display:flex; gap:1rem; align-items:center; padding:.6rem 1rem; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-header h1 { font-size:1rem; margin:0; color:var(--accent); }
+header h1 { font-size:1rem; margin:0; color:var(--accent); display:flex; gap:.4rem; align-items:center; }
 nav button { background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); padding:.3rem .6rem; cursor:pointer; font:inherit; }
 nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #status { margin-left:auto; color:var(--muted); font-size:12px; }
@@ -94,7 +94,7 @@ input[type=text] { width:100%; max-width:40rem; }
   </div>
 </div>
 <header>
-  <h1>anvilbook</h1>
+  <h1><img src="logo.svg" alt="" width="22" height="22"> anvilbook</h1>
   <nav>
     <button data-tab="crafts" class="active">Crafts</button>
     <button data-tab="plan">Plan</button>
