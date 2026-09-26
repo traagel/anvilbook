@@ -22,7 +22,8 @@ Everything runs on your own computer. Nothing is uploaded anywhere.
 
 ## Install
 
-You need [Auctionator](https://www.curseforge.com/wow/addons/auctionator) in game.
+You need [Auctionator](https://www.curseforge.com/wow/addons/auctionator) in game. anvilbook's own
+addon, `AnvilbookExport`, ships inside the app, which installs it for you at first run.
 
 **Windows:** download `anvilbook.exe` from the
 [releases page](https://github.com/traagel/anvilbook/releases) and run it. Your browser
@@ -47,12 +48,25 @@ uv run anvilbook
 1. Point anvilbook at your game. Paste the path to `Auctionator.lua`, or press **Look for my game
    folder** and pick one of the results. It only searches your disk when you press that button,
    and it never sends anything anywhere.
-2. Press **Install addon**. That copies the small `AnvilbookExport` addon into the game.
-3. Start WoW. Open each profession window for a few seconds, then type `/reload`.
+2. Press **Install addon**. That copies the small `AnvilbookExport` addon into the game, so you
+   do not have to download or move anything. See below if you would rather install it yourself.
+3. Start WoW, or log out to the character screen if it was already running, so the game picks up
+   the new addon. Open each profession window for a few seconds, then type `/reload`.
 4. Scan the auction house with Auctionator, then type `/reload` again.
 
 Step 3 gives anvilbook your recipes and skill levels. Step 4 gives it prices. Repeat step 4
 whenever you want fresh prices; the app imports the file within 5 seconds of each `/reload`.
+
+### Installing the addon by hand
+
+The **Install addon** button does this for you. Do it yourself only if you prefer to:
+
+1. Download `AnvilbookExport.zip` from the
+   [releases page](https://github.com/traagel/anvilbook/releases).
+2. Unzip it into the game's `Interface/AddOns` folder, next to your other addons. You should end
+   up with `…/Interface/AddOns/AnvilbookExport/AnvilbookExport.toc`.
+3. Log out to the character screen, and make sure **Anvilbook Export** is ticked in the AddOns
+   list.
 
 ## Why `/reload`
 
