@@ -52,6 +52,12 @@ nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #setup .install span { color:var(--muted); font-size:12px; display:block; word-break:break-all; }
 #setup .error { color:var(--bad); }
 #quit { margin-left:.5rem; }
+#share .card { max-width:38rem; }
+#share h3 { color:var(--accent); margin:0 0 .3rem; }
+#share h4 { margin:1.2rem 0 .2rem; color:var(--muted); font-size:12px; font-weight:600; }
+#share .error { color:var(--bad); }
+#share-characters label { display:flex; gap:.4rem; align-items:baseline; }
+#share-characters .rank { color:var(--muted); font-size:12px; }
 #addon-box { color:var(--muted); font-size:12px; }
 main { padding:1rem; }
 section { display:none; }
@@ -103,6 +109,7 @@ input[type=text] { width:100%; max-width:40rem; }
     <button data-tab="plan">Plan</button>
     <button data-tab="history">History</button>
     <button data-tab="sellthrough">Sell-through</button>
+    <button data-tab="share">Share</button>
     <button data-tab="settings">Settings</button>
   </nav>
   <button id="import">Import now</button>
@@ -140,6 +147,43 @@ input[type=text] { width:100%; max-width:40rem; }
     <label>To <select id="st-to"></select></label>
     <p class="note">A drop in listed count means sales or expired auctions. Green: fewer listed (selling).</p>
     <div class="wrap"><table id="st-table"></table></div>
+  </section>
+  <section id="share">
+    <div class="card">
+      <h3>Share your prices</h3>
+      <p class="note">Nothing leaves this computer until you turn on a switch below. You can turn
+        them off again at any time, and delete everything you sent.</p>
+      <label>Server address
+        <input id="share-url" type="text" placeholder="https://anvilbook.example.com">
+      </label>
+      <p id="share-error" class="error" hidden></p>
+      <div id="share-signin">
+        <p class="note">No email is used, and there is no password reset. If you forget the
+          password, the account is gone.</p>
+        <label>Username <input id="share-user" type="text" autocomplete="username"></label>
+        <label>Password <input id="share-pass" type="password" autocomplete="current-password"></label>
+        <button id="share-login">Sign in</button>
+        <button id="share-register">Create an account</button>
+      </div>
+      <div id="share-account" hidden>
+        <p>Signed in as <b id="share-who"></b>. <button id="share-logout">Sign out</button></p>
+        <label><input type="checkbox" id="share-prices"> Send my price scans after each import</label>
+        <p class="note">This sends item ids, the lowest price, and how many are listed, with the
+          realm and the time of the scan. It never sends your gold, your bags or your name.</p>
+        <h4>Publish what a character can craft</h4>
+        <p class="note">This sends the character name, its professions and skill, and the recipes
+          it knows, so the site can show its crafting profits.</p>
+        <div id="share-characters"></div>
+        <p>
+          <button id="share-push">Push now</button>
+          <span id="share-push-note" class="note"></span>
+        </p>
+        <h4>Delete everything</h4>
+        <p class="note">This removes the account, every scan you sent, and every published
+          character. It cannot be undone.</p>
+        <button id="share-delete">Delete my account and everything I sent</button>
+      </div>
+    </div>
   </section>
   <section id="settings">
     <h3>Game folder</h3>
@@ -648,6 +692,87 @@ $('#quit').onclick = async () => {
   document.body.innerHTML = '<p style="padding:2rem">anvilbook has stopped. You can close this tab.</p>';
 };
 
+let share = {published_characters: {}};
+
+async function loadShare() {
+  share = await api('/api/share');
+  $('#share-url').value = share.server_url;
+  $('#share-signin').hidden = share.signed_in;
+  $('#share-account').hidden = !share.signed_in;
+  $('#share-who').textContent = share.username;
+  $('#share-prices').checked = share.push_prices;
+  const box = $('#share-characters');
+  box.innerHTML = '';
+  for (const c of await api('/api/characters')) {
+    const label = document.createElement('label');
+    const tick = document.createElement('input');
+    tick.type = 'checkbox';
+    tick.checked = !!share.published_characters[c.character];
+    tick.onchange = async () => {
+      shareError('');
+      try {
+        await saveShare({published_characters:
+          {...share.published_characters, [c.character]: tick.checked}});
+      } catch (e) {
+        shareError(e.message);
+        await loadShare();
+      }
+    };
+    const ranks = Object.entries(c.professions).map(([p, r]) => `${p} ${r}`).join(', ');
+    label.append(tick, document.createTextNode(c.character + ' '));
+    const note = document.createElement('span');
+    note.className = 'rank';
+    note.textContent = ranks;
+    label.append(note);
+    box.append(label);
+  }
+}
+
+async function saveShare(values) {
+  await api('/api/share/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                                    body: JSON.stringify(values)});
+  await loadShare();
+}
+
+function shareError(message) {
+  $('#share-error').textContent = message;
+  $('#share-error').hidden = !message;
+}
+
+async function signIn(path) {
+  shareError('');
+  try {
+    await api(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                     body: JSON.stringify({server_url: $('#share-url').value.trim(),
+                                           username: $('#share-user').value.trim(),
+                                           password: $('#share-pass').value})});
+    $('#share-pass').value = '';
+    await loadShare();
+  } catch (e) { shareError(e.message); }
+}
+
+$('#share-login').onclick = () => signIn('/api/share/login');
+$('#share-register').onclick = () => signIn('/api/share/register');
+$('#share-prices').onchange = () => saveShare({push_prices: $('#share-prices').checked});
+$('#share-logout').onclick = async () => {
+  await api('/api/share/logout', {method: 'POST'});
+  await loadShare();
+};
+$('#share-push').onclick = async () => {
+  $('#share-push-note').textContent = 'Sending…';
+  try {
+    const result = await api('/api/share/push', {method: 'POST'});
+    $('#share-push-note').textContent = result.push_error || 'Sent.';
+  } catch (e) { $('#share-push-note').textContent = e.message; }
+};
+$('#share-delete').onclick = async () => {
+  if (!confirm('Delete your account and everything you sent? This cannot be undone.')) return;
+  try {
+    await api('/api/share/account', {method: 'DELETE'});
+    await loadShare();
+  } catch (e) { shareError(e.message); }
+};
+
 let lastScans = null;
 async function refreshStatus() {
   try {
@@ -656,11 +781,12 @@ async function refreshStatus() {
     const missing = s.pinned && s.export && s.export.character !== s.pinned;
     const empty = s.export && !Object.keys(s.export.professions).length;
     el.textContent = s.last_error
+      || s.push_error
       || (missing ? `${s.pinned} has no recipes yet. Showing ${s.export.character}. Open a profession window on them, then /reload` : '')
       || (empty ? `${s.export.character} has no recipes yet. Open a profession window in game, then /reload` : '')
       || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`
       + (s.export ? '' : '. No recipes yet: open a profession window in game, then /reload');
-    el.className = s.last_error ? 'error' : '';
+    el.className = (s.last_error || s.push_error) ? 'error' : '';
     const state = `${s.scans}:${s.pinned}:${s.export ? s.export.character + s.export.updated : ''}`;
     if (state !== lastScans) {
       lastScans = state;
@@ -686,6 +812,7 @@ for (const b of document.querySelectorAll('nav button')) b.onclick = () => showT
 loadSetup();
 refreshStatus();
 loadSettings();
+loadShare().catch(() => {});
 setInterval(refreshStatus, 5000);
 </script>
 </body>

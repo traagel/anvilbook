@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,7 +13,9 @@ log = logging.getLogger(__name__)
 class Importer:
     def __init__(self, store: Store):
         self.store = store
-        self.status = {'path': None, 'found': False, 'last_import': None, 'last_error': None}
+        self.status = {'path': None, 'found': False, 'last_import': None, 'last_error': None,
+                       'push_error': None}
+        self.on_scan: Callable[[int], None] | None = None
         self._mtime: float | None = None
 
     def _error(self, message: str) -> None:
@@ -59,4 +62,10 @@ class Importer:
         self.status['last_import'] = datetime.now(timezone.utc).isoformat(timespec='seconds')
         self.status['last_error'] = None
         log.info('imported scan %s with %d items', scan_id, len(snap.prices))
+        if scan_id is not None and self.on_scan:
+            try:
+                self.on_scan(scan_id)
+            except Exception as e:
+                # Sharing is a side errand; the scan is already safe on disk.
+                log.warning('after-import hook failed: %s', e)
         return scan_id

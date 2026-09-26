@@ -21,6 +21,7 @@ from .installer import install_addon, is_installed
 from .items import load_items
 from .luatable import LuaParseError, parse_savedvariables
 from .plan import for_budget, plan_for
+from .push import PushClient, PushError
 from .recipes import GameExport, export_skills, load_export, load_exports, merge
 from .store import Store
 from .watcher import Importer
@@ -265,6 +266,116 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
             return store.save_settings(values)
         except (KeyError, ValueError, TypeError, AttributeError) as e:
             raise HTTPException(400, str(e))
+
+    def push_scan(scan_id: int) -> None:
+        settings = store.settings()
+        if not (settings['push_prices'] and settings['server_url'] and settings['server_token']):
+            return
+        scan = next((s for s in store.scans() if s['id'] == scan_id), None)
+        if not scan:
+            return
+        rows = [{'item_id': i, 'min_price': p['min_price'], 'available': p['available'],
+                 'day_high': p['day_high'], 'name': (items().get(i) or {}).get('name')}
+                for i, p in store.prices(scan_id).items()]
+        realm, taken_at = scan['realm'] or 'unknown', scan['file_mtime']
+        try:
+            PushClient(settings['server_url'], settings['server_token']).push_scan(realm, taken_at, rows)
+            importer.status['push_error'] = None
+        except PushError as e:
+            # A failed upload must never cost the local scan.
+            importer.status['push_error'] = str(e)
+            log.warning('push failed: %s', e)
+
+    importer.on_scan = push_scan
+
+    def character_parts(key: str, settings: dict) -> tuple[str, str]:
+        # The addon keys characters "Name - Realm"; a realm name may hold a space.
+        name, separator, realm = key.rpartition(' - ')
+        return (name, realm) if separator else (key, settings['realm'] or 'unknown')
+
+    @app.get('/api/share')
+    def share():
+        s = store.settings()
+        return {'server_url': s['server_url'], 'username': s['server_username'],
+                'signed_in': bool(s['server_token']), 'push_prices': bool(s['push_prices']),
+                'published_characters': s['published_characters']}
+
+    def _sign_in(body: dict, register: bool) -> dict:
+        url, username = str(body.get('server_url') or ''), str(body.get('username') or '')
+        try:
+            client = PushClient(url)
+            token = (client.register if register else client.login)(username, str(body.get('password') or ''))
+        except PushError as e:
+            raise HTTPException(400, str(e))
+        store.save_settings({'server_url': url, 'server_username': username, 'server_token': token})
+        return {'signed_in': True, 'username': username}
+
+    @app.post('/api/share/login')
+    def share_login(body: dict = Body(...)):
+        return _sign_in(body, register=False)
+
+    @app.post('/api/share/register')
+    def share_register(body: dict = Body(...)):
+        return _sign_in(body, register=True)
+
+    @app.post('/api/share/logout')
+    def share_logout():
+        s = store.settings()
+        if s['server_token']:
+            try:
+                PushClient(s['server_url'], s['server_token']).logout()
+            except PushError as e:
+                log.warning('logout failed: %s', e)
+        store.save_settings({'server_token': '', 'push_prices': False})
+        return {'signed_in': False}
+
+    @app.put('/api/share/settings')
+    def share_settings(body: dict = Body(...)):
+        settings = store.settings()
+        allowed = {k: v for k, v in body.items() if k in ('push_prices', 'published_characters')}
+        for character, was in (settings['published_characters'] if 'published_characters' in allowed else {}).items():
+            if was and not allowed['published_characters'].get(character):
+                name, realm = character_parts(character, settings)
+                try:
+                    PushClient(settings['server_url'],
+                               settings['server_token']).unpublish_character(realm, name)
+                except PushError as e:
+                    # Saving the switch as off while the site still holds the character
+                    # would tell the person a lie they cannot see through.
+                    log.warning('unpublish failed: %s', e)
+                    raise HTTPException(400, f'{character} is still published: {e}')
+        return store.save_settings(allowed)
+
+    @app.post('/api/share/push')
+    def share_push():
+        settings = store.settings()
+        if not (settings['server_url'] and settings['server_token']):
+            raise HTTPException(400, 'Sign in on the Share tab first')
+        scan_id = store.latest_scan_id()
+        if scan_id:
+            push_scan(scan_id)
+        client = PushClient(settings['server_url'], settings['server_token'])
+        for export in load_exports(Path(settings['export_path']).expanduser()):
+            if not settings['published_characters'].get(export.character):
+                continue
+            name, realm = character_parts(export.character, settings)
+            try:
+                client.push_character(realm, name, export.professions, True)
+            except PushError as e:
+                importer.status['push_error'] = str(e)
+        return {'ok': True, **importer.status}
+
+    @app.delete('/api/share/account')
+    def share_delete_account():
+        settings = store.settings()
+        if settings['server_token']:
+            try:
+                PushClient(settings['server_url'], settings['server_token']).delete_account()
+            except PushError as e:
+                raise HTTPException(400, str(e))
+        store.save_settings({'server_token': '', 'server_username': '', 'push_prices': False,
+                             'published_characters': {}})
+        return {'signed_in': False}
 
     # Mounted last: a mount swallows every path registered after it.
     app.mount('/', StaticFiles(directory=STATIC), name='static')

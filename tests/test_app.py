@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from anvilbook.app import create_app
+from anvilbook.push import PushError
 from lua_fixture import entry, savedvariables
 
 
@@ -369,6 +370,60 @@ def test_bad_settings_are_rejected(env):
     client, _ = env
     assert client.put('/api/settings', json={'bogus': 1}).status_code == 400
     assert client.put('/api/settings', json={'min_listed': 'x'}).status_code == 400
+
+
+def test_sharing_is_off_until_asked(env):
+    client, _ = env
+    share = client.get('/api/share').json()
+    assert share == {'server_url': '', 'username': '', 'signed_in': False,
+                     'push_prices': False, 'published_characters': {}}
+
+
+def test_a_failed_push_does_not_break_the_import(env, monkeypatch):
+    client, sv = env
+    client.put('/api/settings', json={'server_url': 'https://example.com',
+                                      'server_token': 'abc', 'push_prices': True})
+
+    class Failing:
+        def __init__(self, *args, **kw):
+            pass
+
+        def push_scan(self, *args, **kw):
+            raise PushError('Could not reach the server')
+
+    monkeypatch.setattr('anvilbook.app.PushClient', Failing)
+    sv.write_bytes(savedvariables({'2770': entry(57, 2460, 100)}))
+
+    assert client.post('/api/import').json()['scan_id'] is not None
+    assert 'Could not reach the server' in client.get('/api/status').json()['push_error']
+
+
+def test_a_failed_unpublish_keeps_the_switch_on(env, monkeypatch):
+    client, _ = env
+    client.put('/api/settings', json={'server_url': 'https://example.com', 'server_token': 'abc',
+                                      'published_characters': {'Thordak - Forever': True}})
+
+    class Failing:
+        def __init__(self, *args, **kw):
+            pass
+
+        def unpublish_character(self, *args, **kw):
+            raise PushError('Could not reach the server')
+
+    monkeypatch.setattr('anvilbook.app.PushClient', Failing)
+    response = client.put('/api/share/settings', json={'published_characters': {'Thordak - Forever': False}})
+
+    assert response.status_code == 400
+    # The site still holds the character, so the switch must not read as off.
+    assert client.get('/api/share').json()['published_characters'] == {'Thordak - Forever': True}
+
+
+def test_a_mistyped_server_address_is_explained_not_a_500(env):
+    client, _ = env
+    response = client.post('/api/share/login', json={'server_url': 'https://exa mple.com',
+                                                     'username': 'thordak', 'password': 'a long password'})
+    assert response.status_code == 400
+    assert response.json()['detail']
 
 
 def test_index_and_its_files_are_served(env):

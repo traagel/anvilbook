@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>anvilbook</title>
+<link rel="icon" href="logo.svg">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.32/dist/uPlot.iife.min.js"></script>
+<style>
+:root { --bg:#fff; --fg:#1b1b1f; --muted:#6b6b76; --line:#e3e3e8; --accent:#b8860b; --bad:#c0392b; --good:#2e8b57; --series2:#4a78c2; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#16161a; --fg:#e8e8ee; --muted:#9a9aa6; --line:#2c2c33; --accent:#e0b04a; --bad:#e06c5c; --good:#5cbf8a; --series2:#7aa2e8; }
+}
+body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+header { display:flex; gap:1rem; align-items:center; padding:.6rem 1rem; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+header h1 { font-size:1rem; margin:0; color:var(--accent); display:flex; gap:.4rem; align-items:center; }
+nav button { background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); padding:.3rem .6rem; cursor:pointer; font:inherit; }
+nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
+#realm { margin-left:auto; }
+#status { color:var(--muted); font-size:12px; }
+#status.error { color:var(--bad); }
+main { padding:1rem; }
+section { display:none; }
+section.active { display:block; }
+.wrap { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; }
+th, td { padding:.3rem .5rem; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+th:first-child, td:first-child { text-align:left; }
+th { cursor:pointer; user-select:none; color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--bg); }
+tbody tr { cursor:pointer; }
+.d-optimal { color:#e8742a; }
+.d-medium { color:#c9a400; }
+.d-easy { color:#3fa34d; }
+.d-trivial { color:var(--muted); }
+.note { color:var(--muted); font-size:12px; margin:.5rem 0; }
+label { display:block; margin:.6rem 0; }
+input, select, button { font:inherit; background:var(--bg); color:var(--fg); border:1px solid var(--line); padding:.3rem .5rem; }
+input[type=text] { width:100%; max-width:26rem; }
+#item-head { margin:.6rem 0; display:flex; gap:1.5rem; align-items:baseline; flex-wrap:wrap; }
+#item-head h2 { margin:0; font-size:1.2rem; }
+#item-head b { color:var(--accent); font-size:1.4rem; }
+#about { max-width:44rem; }
+#about h2 { color:var(--accent); font-size:1.2rem; margin:0 0 .3rem; }
+#about p { color:var(--muted); }
+footer { color:var(--muted); font-size:12px; padding:1rem; border-top:1px solid var(--line); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><img src="logo.svg" alt="" width="20" height="20"> anvilbook</h1>
+  <nav>
+    <button data-tab="prices" class="active">Prices</button>
+    <button data-tab="crafts">Crafting</button>
+    <button data-tab="about">About</button>
+  </nav>
+  <select id="realm" aria-label="Realm"></select>
+  <span id="status"></span>
+</header>
+<main>
+
+<section id="prices" class="active">
+  <label>Search for an item
+    <input type="text" id="search" placeholder="copper bar" autocomplete="off">
+  </label>
+  <select id="search-results" size="6" aria-label="Search results" hidden></select>
+  <div id="item-head" hidden>
+    <h2 id="item-name"></h2>
+    <span>Lowest listing <b id="item-price"></b></span>
+    <span id="item-available" class="note"></span>
+    <span id="item-seen" class="note"></span>
+  </div>
+  <div id="chart"></div>
+</section>
+
+<section id="crafts">
+  <label>Recipes from
+    <select id="character"></select>
+  </label>
+  <p class="note" id="craft-note"></p>
+  <div class="wrap"><table id="craft-table"></table></div>
+</section>
+
+<section id="about">
+  <h2>What this is</h2>
+  <p>anvilbook is a small program you run on your own computer. It reads the prices that the
+  Auctionator addon saves in WoW Forever, keeps every scan as history, and works out what is
+  worth crafting with the recipes your characters know.</p>
+  <h2>Where these prices come from</h2>
+  <p>Players who run anvilbook and turn sharing on send their scans here. A realm is only as
+  fresh as its last contributor, and nothing is shared unless the player asks for it.</p>
+  <h2>Get it</h2>
+  <p>
+    <a href="https://github.com/traagel/anvilbook/releases">Download for Windows</a> &middot;
+    <a href="https://pypi.org/project/anvilbook/">Install with uvx</a> &middot;
+    <a href="https://www.curseforge.com/wow/addons/anvilbook-export">The in-game addon</a>
+  </p>
+</section>
+
+</main>
+<footer>Prices come from players running anvilbook. Nothing here is official Blizzard data.</footer>
+<script>
+const $ = s => document.querySelector(s);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const body = await r.json();
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+function money(c) {
+  if (c == null) return '';
+  const sign = c < 0 ? '-' : '';
+  c = Math.round(Math.abs(c));
+  const g = Math.floor(c / 10000), s = Math.floor(c / 100) % 100, cu = String(c % 100).padStart(2, '0');
+  return sign + (g ? `${g}g ${String(s).padStart(2, '0')}s ${cu}c` : `${s}s ${cu}c`);
+}
+
+function renderTable(el, cols, rows, onRowClick) {
+  const key = el.dataset.sortKey, dir = Number(el.dataset.sortDir || -1);
+  const sorted = key ? [...rows].sort((a, b) => {
+    const x = a[key] ?? -Infinity, y = b[key] ?? -Infinity;
+    return (x > y ? 1 : x < y ? -1 : 0) * dir;
+  }) : rows;
+  el.innerHTML = '';
+  const head = el.createTHead().insertRow();
+  for (const c of cols) {
+    const th = document.createElement('th');
+    th.textContent = c.label + (c.key === key ? (dir > 0 ? ' ▲' : ' ▼') : '');
+    th.onclick = () => {
+      el.dataset.sortDir = c.key === key ? -dir : -1;
+      el.dataset.sortKey = c.key;
+      renderTable(el, cols, rows, onRowClick);
+    };
+    head.appendChild(th);
+  }
+  const body = el.createTBody();
+  for (const r of sorted) {
+    const tr = body.insertRow();
+    for (const c of cols) {
+      const td = tr.insertCell();
+      td.textContent = c.fmt ? c.fmt(r[c.key], r) : (r[c.key] ?? '');
+      if (c.cls) td.className = c.cls(r[c.key], r);
+    }
+    if (onRowClick) tr.onclick = () => onRowClick(r);
+  }
+}
+
+const craftCols = [
+  {key: 'name', label: 'Item'},
+  {key: 'profession', label: 'Profession'},
+  {key: 'skill', label: 'Skill / skill-up', fmt: (v, r) => r.difficulty || v,
+   cls: (v, r) => r.difficulty ? 'd-' + r.difficulty : ''},
+  {key: 'cost', label: 'Cost', fmt: money},
+  {key: 'revenue', label: 'Net sale', fmt: money},
+  {key: 'profit', label: 'Profit', fmt: money},
+  {key: 'casts', label: 'Casts', fmt: v => v.toFixed(1)},
+  {key: 'listed', label: 'Listed'},
+];
+
+let realm = '';
+let chart, searchTimer;
+
+function fail(e) {
+  $('#status').textContent = e.message;
+  $('#status').className = 'error';
+}
+
+function show(tab) {
+  for (const b of document.querySelectorAll('nav button')) b.classList.toggle('active', b.dataset.tab === tab);
+  for (const s of document.querySelectorAll('section')) s.classList.toggle('active', s.id === tab);
+  if (tab === 'crafts') loadCrafts();
+}
+for (const b of document.querySelectorAll('nav button')) b.onclick = () => show(b.dataset.tab);
+
+async function loadRealms() {
+  const realms = await api('/api/realms');
+  const sel = $('#realm');
+  sel.innerHTML = '';
+  for (const r of realms) sel.add(new Option(`${r.name} (${r.scans} scans)`, r.name));
+  if (!realms.length) {
+    $('#status').textContent = 'No realm has been shared yet.';
+    return;
+  }
+  realm = realms[0].name;
+  await loadCharacters();
+}
+$('#realm').onchange = async e => {
+  realm = e.target.value;
+  await loadCharacters();
+  if ($('#crafts').classList.contains('active')) loadCrafts();
+};
+
+async function loadCharacters() {
+  const characters = await api('/api/characters?realm=' + encodeURIComponent(realm));
+  const sel = $('#character');
+  sel.innerHTML = '';
+  sel.add(new Option('every known recipe', ''));
+  for (const c of characters) {
+    const skills = Object.entries(c.professions).map(([p, rank]) => `${p} ${rank}`).join(', ');
+    sel.add(new Option(`${c.name} (${skills})`, c.name));
+  }
+}
+$('#character').onchange = () => loadCrafts();
+
+async function loadCrafts() {
+  if (!realm) return;
+  const character = $('#character').value;
+  const query = '/api/crafts?realm=' + encodeURIComponent(realm) + (character ? '&character=' + encodeURIComponent(character) : '');
+  try {
+    const rows = await api(query);
+    $('#craft-note').textContent = character
+      ? `What ${character} can make, at their skill level.`
+      : 'Every recipe in the item database, priced from the newest scan.';
+    renderTable($('#craft-table'), craftCols, rows, r => {
+      show('prices');
+      showItem(r.item_id);
+    });
+  } catch (e) { fail(e); }
+}
+
+$('#search').oninput = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    const q = $('#search').value.trim();
+    if (q.length < 2 || !realm) return;
+    try {
+      const hits = await api(`/api/items/search?q=${encodeURIComponent(q)}&realm=${encodeURIComponent(realm)}`);
+      const sel = $('#search-results');
+      sel.innerHTML = '';
+      for (const h of hits) sel.add(new Option(h.name || h.item_id, h.item_id));
+      sel.hidden = !hits.length;
+      if (hits.length) showItem(hits[0].item_id);
+    } catch (e) { fail(e); }
+  }, 250);
+};
+$('#search-results').onchange = e => showItem(e.target.value);
+
+async function showItem(id) {
+  try {
+    const item = await api(`/api/items/${id}?realm=${encodeURIComponent(realm)}`);
+    const history = await api(`/api/items/${id}/history?realm=${encodeURIComponent(realm)}`);
+    $('#item-head').hidden = false;
+    $('#item-name').textContent = item.name || `Item ${item.item_id}`;
+    $('#item-price').textContent = money(item.min_price);
+    $('#item-available').textContent = `${item.available} listed`;
+    $('#item-seen').textContent = 'scanned ' + new Date(item.taken_at).toLocaleString();
+    const data = [
+      history.points.map(p => Date.parse(p.taken_at) / 1000),
+      history.points.map(p => p.min_price == null ? null : p.min_price / 10000),
+      history.points.map(p => p.available),
+    ];
+    const axis = {stroke: css('--muted'), grid: {stroke: css('--line')}, ticks: {stroke: css('--line')}};
+    const opts = {
+      width: Math.min(900, $('main').clientWidth - 20), height: 320,
+      series: [{}, {label: 'Lowest price', stroke: css('--accent'), scale: 'g', value: (u, v) => v == null ? '' : money(v * 10000)},
+               {label: 'Listed', stroke: css('--series2'), scale: 'n'}],
+      axes: [axis, {...axis, scale: 'g', label: 'gold'}, {...axis, scale: 'n', side: 1, label: 'listed', grid: {show: false}}],
+    };
+    if (chart) chart.destroy();
+    chart = new uPlot(opts, data, $('#chart'));
+  } catch (e) { fail(e); }
+}
+
+loadRealms().catch(fail);
+</script>
+</body>
+</html>
