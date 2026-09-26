@@ -1,6 +1,6 @@
 [project]
 name = "anvilbook"
-version = "0.1.3"
+version = "0.2.0"
 description = "Auction house price history and crafting profit for WoW Forever (Classic beta)"
 readme = "README.md"
 requires-python = ">=3.12"
