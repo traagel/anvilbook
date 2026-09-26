@@ -1,0 +1,69 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  executables:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: anvilbook-windows
+            file: dist/anvilbook.exe
+          - os: ubuntu-latest
+            artifact: anvilbook-linux
+            file: dist/anvilbook
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run pyinstaller anvilbook.spec --noconfirm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.file }}
+
+  addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cd src/anvilbook/addon && zip -r ../../../AnvilbookExport.zip AnvilbookExport
+      - uses: actions/upload-artifact@v4
+        with:
+          name: addon
+          path: AnvilbookExport.zip
+
+  publish-pypi:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  release:
+    needs: [executables, addon]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: name the files by platform
+        run: |
+          mkdir release
+          cp artifacts/anvilbook-windows/anvilbook.exe release/anvilbook.exe
+          cp artifacts/anvilbook-linux/anvilbook release/anvilbook-linux
+          cp artifacts/addon/AnvilbookExport.zip release/
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

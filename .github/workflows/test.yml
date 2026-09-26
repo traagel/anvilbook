@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: sudo apt-get update && sudo apt-get install -y luajit
+      - run: uv run pytest -q
+      - name: addon harnesses
+        run: |
+          for harness in tests/addon_harness.lua tests/addon_harness_modern.lua; do
+            luajit "$harness" src/anvilbook/addon/AnvilbookExport/AnvilbookExport.lua
+          done
