@@ -22,7 +22,8 @@ def test_query_and_execute_round_trip(database):
 
 
 def test_health_endpoint(database):
+    import anvilbook
     from fastapi.testclient import TestClient
     from anvilbook.server.api import create_server
     with TestClient(create_server(database)) as client:
-        assert client.get('/healthz').json() == {'ok': True}
+        assert client.get('/healthz').json() == {'ok': True, 'version': anvilbook.__version__}

@@ -31,7 +31,6 @@ wheels = [
 
 [[package]]
 name = "anvilbook"
-version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "cbor2" },

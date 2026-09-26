@@ -435,6 +435,14 @@ def test_a_mistyped_server_address_is_explained_not_a_500(env):
     assert response.json()['detail']
 
 
+def test_status_carries_the_running_version(env):
+    client, _ = env
+    import anvilbook
+    # Read from the source, not the installed metadata: the frozen exe has no metadata.
+    assert client.get('/api/status').json()['version'] == anvilbook.__version__
+    assert anvilbook.__version__[0].isdigit()
+
+
 def test_index_and_its_files_are_served(env):
     client, _ = env
     assert 'anvilbook' in client.get('/').text

@@ -99,7 +99,8 @@ footer { color:var(--muted); font-size:12px; padding:1rem; border-top:1px solid 
 </section>
 
 </main>
-<footer>Prices come from players running anvilbook. Nothing here is official Blizzard data.</footer>
+<footer>Prices come from players running anvilbook. Nothing here is official Blizzard data.
+  <span id="version"></span></footer>
 <script>
 const $ = s => document.querySelector(s);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -266,6 +267,8 @@ async function showItem(id) {
 }
 
 loadRealms().catch(fail);
+api('/healthz').then(h => { $('#version').textContent = h.version ? 'v' + h.version : ''; })
+  .catch(() => {});
 </script>
 </body>
 </html>

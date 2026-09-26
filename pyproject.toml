@@ -1,6 +1,6 @@
 [project]
 name = "anvilbook"
-version = "0.3.0"
+dynamic = ["version"]
 description = "Auction house price history and crafting profit for WoW Forever (Classic beta)"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -42,6 +42,10 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# The frozen exe carries no package metadata, so the version lives in the source.
+path = "src/anvilbook/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/anvilbook"]

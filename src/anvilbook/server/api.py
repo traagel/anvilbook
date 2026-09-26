@@ -9,6 +9,7 @@ from fastapi import Body, Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .. import __version__
 from ..items import load_items
 from .auth import check_password, check_username, hash_password, new_token, token_hash, verify_password
 from .crafts_api import add_crafts_route
@@ -86,7 +87,7 @@ def create_server(database: Database | None = None, data_dir: Path | None = None
     @app.get('/healthz')
     def healthz():
         db.query('SELECT 1')
-        return {'ok': True}
+        return {'ok': True, 'version': __version__}
 
     def user_for(authorization: str | None) -> dict:
         if not authorization or not authorization.startswith(PREFIX):

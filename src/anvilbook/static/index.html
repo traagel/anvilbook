@@ -15,6 +15,7 @@
 body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
 header { display:flex; gap:1rem; align-items:center; padding:.6rem 1rem; border-bottom:1px solid var(--line); flex-wrap:wrap; }
 header h1 { font-size:1rem; margin:0; color:var(--accent); display:flex; gap:.4rem; align-items:center; }
+header h1 small { color:var(--muted); font-weight:400; font-size:11px; }
 nav button { background:none; border:0; border-bottom:2px solid transparent; color:var(--muted); padding:.3rem .6rem; cursor:pointer; font:inherit; }
 nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #status { margin-left:auto; color:var(--muted); font-size:12px; }
@@ -103,7 +104,7 @@ input[type=text] { width:100%; max-width:40rem; }
   </div>
 </div>
 <header>
-  <h1><img src="logo.svg" alt="" width="22" height="22"> anvilbook</h1>
+  <h1><img src="logo.svg" alt="" width="22" height="22"> anvilbook <small id="version"></small></h1>
   <nav>
     <button data-tab="crafts" class="active">Crafts</button>
     <button data-tab="plan">Plan</button>
@@ -775,6 +776,7 @@ let lastScans = null;
 async function refreshStatus() {
   try {
     const s = await api('/api/status');
+    $('#version').textContent = s.version ? 'v' + s.version : '';
     const el = $('#status');
     const missing = s.pinned && s.export && s.export.character !== s.pinned;
     const empty = s.export && !Object.keys(s.export.professions).length;

@@ -13,6 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import __version__
 from .config import config_path, load_config, write_config
 from .craft import Calculator, CraftSettings
 from .disenchant import effective_table, observed, parse_records
@@ -157,7 +158,7 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         exp = game_export()
         summary = exp and {'character': exp.character, 'updated': exp.updated, 'professions': export_skills(exp)}
         return {**importer.status, 'scans': len(store.scans()), 'export': summary,
-                'pinned': store.settings()['character']}
+                'pinned': store.settings()['character'], 'version': __version__}
 
     @app.post('/api/import')
     def do_import():
