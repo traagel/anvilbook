@@ -1,5 +1,6 @@
 import pytest
 
+from anvilbook import __version__
 from anvilbook.installer import ADDON_NAME, addon_source, install_addon, is_installed, target_dir
 
 
@@ -14,6 +15,11 @@ def savedvariables(tmp_path):
 def test_addon_ships_with_the_package():
     assert (addon_source() / 'AnvilbookExport.toc').exists()
     assert (addon_source() / 'AnvilbookExport.lua').exists()
+
+
+def test_addon_version_is_the_app_version():
+    toc = (addon_source() / 'AnvilbookExport.toc').read_text()
+    assert f'## Version: {__version__}\n' in toc
 
 
 def test_install_copies_the_addon_next_to_the_game(tmp_path):

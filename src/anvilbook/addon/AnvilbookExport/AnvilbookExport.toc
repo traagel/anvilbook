@@ -1,7 +1,7 @@
 ## Interface: 16001, 11508, 11509
 ## Title: Anvilbook
 ## Notes: Crafting profits, shopping lists and price history from the anvilbook app.
-## Version: 2.0
+## Version: 0.5.0
 ## SavedVariables: AnvilbookExportDB
 
 AnvilbookData.lua
