@@ -3,6 +3,16 @@
 Each version of anvilbook ships the app and the `AnvilbookExport` addon together. "In game" lists
 what changed in the addon, for the CurseForge file notes. "App" lists the rest.
 
+## [0.5.1] - 2026-10-06
+
+### In game
+
+- The game's AddOns list shows the same version as the release. Version 0.5.0 showed 2.0.
+
+### App
+
+- Each GitHub release takes its notes from this changelog.
+
 ## [0.5.0] - 2026-10-06
 
 ### In game
@@ -96,6 +106,7 @@ what changed in the addon, for the CurseForge file notes. "App" lists the rest.
   disenchants.
 - Finds the game and installs the addon from the web page.
 
+[0.5.1]: https://github.com/traagel/anvilbook/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/traagel/anvilbook/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/traagel/anvilbook/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/traagel/anvilbook/compare/v0.2.0...v0.3.0
