@@ -26,6 +26,8 @@ Everything runs on your own computer. Nothing is uploaded unless you turn on sha
 - **Sell-through**: what sold between 2 scans, which shows real demand.
 - **Disenchanting**: values a crafted item by its disenchant materials as well as its sale
   price, and learns the real yields from the disenchants you do.
+- **In game**: the same views in a game window, a shopping list beside the auction house, and
+  lines on item tooltips. See [In game](#in-game).
 
 ## Install
 
@@ -90,6 +92,31 @@ The **Install addon** button does this for you. Do it yourself only if you prefe
 WoW writes addon data to disk only when you log out, disconnect, or type `/reload`. No addon
 can write files at another time, so `/reload` is how the data reaches anvilbook.
 
+## In game
+
+The `AnvilbookExport` addon also shows anvilbook in the game. Type `/anvilbook`, or click the
+minimap button.
+
+- The window has the web page's tabs: Crafts, Plan, History, Sell-through, Share and Settings.
+  Right-click a craft to plan it.
+- When you open the auction house, the plan's shopping list docks beside it. A row gets a tick
+  when you have bought it, and one button searches for the whole list in Auctionator.
+- Item tooltips show the listed count, the price change since the scan before, the craft profit,
+  and the disenchant value.
+- Esc > Options > AddOns > Anvilbook turns each part on or off. `/anvilbook options` opens it.
+
+The crafting math runs in the game, so a change applies at once. The prices come from the app's
+last scan. After you scan in the current session, Auctionator's own prices replace them.
+
+The app writes its data to `Interface/AddOns/AnvilbookExport/AnvilbookData.lua` after each
+import, and the game reads it at the next `/reload`. Thus the app's numbers in the game are one
+`/reload` behind: scan, `/reload` (the app imports), then `/reload` again to see them. Settings
+and sharing switches that you change in game reach the app at your next `/reload` or logout.
+Sign-in and account deletion stay in the browser.
+
+After you install or update the addon, restart the game. A `/reload` does not load the files
+that a new addon version adds.
+
 ## Settings
 
 The Settings tab holds the auction cut, the cast time, filters, the disenchant table, and the
@@ -142,7 +169,17 @@ luajit tests/addon_harness_modern.lua src/anvilbook/addon/AnvilbookExport/Anvilb
 ```
 
 The addon harnesses stub the WoW API, so they need [LuaJIT](https://luajit.org/) but not the
-game. The server tests need Postgres; see [docs/server.md](docs/server.md).
+game. `pytest` also runs LuaJIT, when it is installed: `test_calc_parity.py` checks that the
+addon's Lua calculator gives the same answers as the Python one, and `test_addon_ui.py` drives
+the in-game UI on a data file that the app wrote. The server tests need Postgres; see
+[docs/server.md](docs/server.md).
+
+If the game's addon folder is a symlink to this repository, the app writes its data file into
+your working copy. Tell git to leave it alone:
+
+```bash
+git update-index --skip-worktree src/anvilbook/addon/AnvilbookExport/AnvilbookData.lua
+```
 
 ## Credits
 
