@@ -4,6 +4,7 @@
 [![pypi](https://img.shields.io/pypi/v/anvilbook)](https://pypi.org/project/anvilbook/)
 [![release](https://img.shields.io/github/v/release/traagel/anvilbook)](https://github.com/traagel/anvilbook/releases)
 [![downloads](https://img.shields.io/github/downloads/traagel/anvilbook/total)](https://github.com/traagel/anvilbook/releases)
+[![curseforge](https://img.shields.io/badge/curseforge-anvilbook--export-f16436)](https://www.curseforge.com/wow/addons/anvilbook-export)
 [![licence](https://img.shields.io/github/license/traagel/anvilbook)](LICENSE)
 ![python](https://img.shields.io/badge/python-3.12%2B-blue)
 
@@ -14,6 +15,8 @@ addon saves, keeps every scan as history, and tells you what is worth crafting w
 recipes your characters actually know.
 
 Everything runs on your own computer. Nothing is uploaded unless you turn on sharing.
+
+<img src="docs/screenshots/crafts.png" alt="The Crafts tab in game: each recipe with its cost, profit and profit per cast" width="720">
 
 ## What it does
 
@@ -32,7 +35,8 @@ Everything runs on your own computer. Nothing is uploaded unless you turn on sha
 ## Install
 
 You need [Auctionator](https://www.curseforge.com/wow/addons/auctionator) in game. anvilbook's own
-addon, `AnvilbookExport`, ships inside the app, which installs it for you at first run.
+addon, `AnvilbookExport`, ships inside the app, which installs it for you at first run. It is
+also on CurseForge as [Anvilbook Export](https://www.curseforge.com/wow/addons/anvilbook-export).
 
 **Windows:** download `anvilbook.exe` from the
 [releases page](https://github.com/traagel/anvilbook/releases) and run it. Your browser
@@ -104,6 +108,13 @@ minimap button.
 - Item tooltips show the listed count, the price change since the scan before, the craft profit,
   and the disenchant value.
 - Esc > Options > AddOns > Anvilbook turns each part on or off. `/anvilbook options` opens it.
+
+| | |
+|---|---|
+| <img src="docs/screenshots/plan.png" alt="The Plan tab: a batch of Barbaric Shoulders for a budget, with what to buy and craft"> | <img src="docs/screenshots/history.png" alt="The History tab: price and listed count over the scans"> |
+| Plan: what to buy and craft for a budget | History: price and listed count over the scans |
+| <img src="docs/screenshots/sell-through.png" alt="The Sell-through tab: the drop in the listed count between 2 scans"> | <img src="docs/screenshots/settings.png" alt="The Settings tab"> |
+| Sell-through: what sold between 2 scans | Settings, which reach the app at the next `/reload` |
 
 The crafting math runs in the game, so a change applies at once. The prices come from the app's
 last scan. After you scan in the current session, Auctionator's own prices replace them.

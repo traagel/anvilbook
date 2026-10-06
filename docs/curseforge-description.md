@@ -11,6 +11,8 @@ Anvilbook answers the questions the auction house cannot:
 - Did that item actually sell, or is it just sitting there?
 - Is this green worth more disenchanted than sold?
 
+![The Crafts tab: each recipe with its cost, profit and profit per cast](https://raw.githubusercontent.com/traagel/anvilbook/main/docs/screenshots/crafts.png)
+
 ## In game
 
 Type `/anvilbook`, or click the minimap button.
@@ -25,6 +27,22 @@ Type `/anvilbook`, or click the minimap button.
 | Share and Settings | The app's sharing switches and calculation settings. |
 
 Esc > Options > AddOns > Anvilbook turns each part on or off.
+
+**Plan:** what to buy and craft for a budget, with what comes from your bags.
+
+![The Plan tab: a batch of Barbaric Shoulders for a budget](https://raw.githubusercontent.com/traagel/anvilbook/main/docs/screenshots/plan.png)
+
+**History:** the price and the listed count over the last 30 scans.
+
+![The History tab: price and listed count over the scans](https://raw.githubusercontent.com/traagel/anvilbook/main/docs/screenshots/history.png)
+
+**Sell-through:** what sold between 2 scans.
+
+![The Sell-through tab: the drop in the listed count between 2 scans](https://raw.githubusercontent.com/traagel/anvilbook/main/docs/screenshots/sell-through.png)
+
+**Settings:** a change applies in game at once, and it reaches the app at the next `/reload`.
+
+![The Settings tab](https://raw.githubusercontent.com/traagel/anvilbook/main/docs/screenshots/settings.png)
 
 ## Without the app
 
