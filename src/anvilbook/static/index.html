@@ -503,12 +503,16 @@ async function loadSettings() {
     e.preventDefault();
     try {
       const out = {};
+      const read = (k, v) => k === 'json' ? v : k === 'number' ? Number(v) : (v || null);
       for (const el of f.elements) {
         if (!el.name) continue;
         const k = el.dataset.kind;
-        out[el.name] = k === 'json' ? JSON.parse(el.value) : k === 'number' ? Number(el.value) : (el.value || null);
+        const value = read(k, k === 'json' ? JSON.parse(el.value) : el.value);
+        // The game changes settings too; resending an unchanged field would undo its change.
+        if (JSON.stringify(value) !== JSON.stringify(read(k, s[el.name]))) out[el.name] = value;
       }
       await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(out)});
+      Object.assign(s, out);
       msg.textContent = ' Saved.';
       loadCrafts();
     } catch (err) {
@@ -711,8 +715,9 @@ async function loadShare() {
     tick.onchange = async () => {
       shareError('');
       try {
-        await saveShare({published_characters:
-          {...share.published_characters, [c.character]: tick.checked}});
+        // The game can publish a character after this page loaded, so merge into the current state.
+        const current = (await api('/api/share')).published_characters;
+        await saveShare({published_characters: {...current, [c.character]: tick.checked}});
       } catch (e) {
         shareError(e.message);
         await loadShare();
@@ -782,11 +787,12 @@ async function refreshStatus() {
     const empty = s.export && !Object.keys(s.export.professions).length;
     el.textContent = s.last_error
       || s.push_error
+      || (s.bridge_error ? `The in-game addon data could not be written: ${s.bridge_error}` : '')
       || (missing ? `${s.pinned} has no recipes yet. Showing ${s.export.character}. Open a profession window on them, then /reload` : '')
       || (empty ? `${s.export.character} has no recipes yet. Open a profession window in game, then /reload` : '')
       || `${s.scans} scans. Last import: ${s.last_import ? new Date(s.last_import).toLocaleString() : 'none since start'}`
       + (s.export ? '' : '. No recipes yet: open a profession window in game, then /reload');
-    el.className = (s.last_error || s.push_error) ? 'error' : '';
+    el.className = (s.last_error || s.push_error || s.bridge_error) ? 'error' : '';
     const state = `${s.scans}:${s.pinned}:${s.export ? s.export.character + s.export.updated : ''}`;
     if (state !== lastScans) {
       lastScans = state;

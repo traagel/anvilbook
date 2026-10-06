@@ -1,8 +1,10 @@
 import asyncio
+import json
 import logging
 import os
 import signal
 import threading
+import time
 import webbrowser
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -13,12 +15,12 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__
+from . import __version__, bridge
 from .config import config_path, load_config, write_config
 from .craft import Calculator, CraftSettings
 from .disenchant import effective_table, observed, parse_records
 from .discover import find_installs, looks_like_addon_code, search_roots
-from .installer import install_addon, is_installed
+from .installer import install_addon, is_installed, target_dir
 from .items import load_items
 from .luatable import LuaParseError, parse_savedvariables
 from .plan import for_budget, plan_for
@@ -67,6 +69,7 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
                 await asyncio.to_thread(importer.run)
             except Exception:
                 log.exception('watcher step failed')
+            await asyncio.to_thread(sync_game_safely)
             await asyncio.sleep(POLL_SECONDS)
 
     def seed_savedvariables() -> None:
@@ -140,9 +143,11 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         if not path.is_file():
             raise HTTPException(400, 'Choose your World of Warcraft folder first')
         try:
-            return {'installed': str(install_addon(path))}
+            installed = install_addon(path)
         except (FileExistsError, OSError) as e:
             raise HTTPException(400, str(e))
+        sync_game_safely()
+        return {'installed': str(installed)}
 
     @app.post('/api/quit')
     async def quit_app():
@@ -332,10 +337,9 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         store.save_settings({'server_token': '', 'push_prices': False})
         return {'signed_in': False}
 
-    @app.put('/api/share/settings')
-    def share_settings(body: dict = Body(...)):
+    def save_share(values: dict) -> dict:
         settings = store.settings()
-        allowed = {k: v for k, v in body.items() if k in ('push_prices', 'published_characters')}
+        allowed = {k: v for k, v in values.items() if k in ('push_prices', 'published_characters')}
         for character, was in (settings['published_characters'] if 'published_characters' in allowed else {}).items():
             if was and not allowed['published_characters'].get(character):
                 name, realm = character_parts(character, settings)
@@ -346,14 +350,18 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
                     # Saving the switch as off while the site still holds the character
                     # would tell the person a lie they cannot see through.
                     log.warning('unpublish failed: %s', e)
-                    raise HTTPException(400, f'{character} is still published: {e}')
+                    raise PushError(f'{character} is still published: {e}')
         return store.save_settings(allowed)
 
-    @app.post('/api/share/push')
-    def share_push():
+    @app.put('/api/share/settings')
+    def share_settings(body: dict = Body(...)):
+        try:
+            return save_share(body)
+        except PushError as e:
+            raise HTTPException(400, str(e))
+
+    def push_all() -> None:
         settings = store.settings()
-        if not (settings['server_url'] and settings['server_token']):
-            raise HTTPException(400, 'Sign in on the Share tab first')
         scan_id = store.latest_scan_id()
         if scan_id:
             push_scan(scan_id)
@@ -366,6 +374,13 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
                 client.push_character(realm, name, export.professions, True)
             except PushError as e:
                 importer.status['push_error'] = str(e)
+
+    @app.post('/api/share/push')
+    def share_push():
+        settings = store.settings()
+        if not (settings['server_url'] and settings['server_token']):
+            raise HTTPException(400, 'Sign in on the Share tab first')
+        push_all()
         return {'ok': True, **importer.status}
 
     @app.delete('/api/share/account')
@@ -379,6 +394,72 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         store.save_settings({'server_token': '', 'server_username': '', 'push_prices': False,
                              'published_characters': {}})
         return {'signed_in': False}
+
+    def mtime(path: Path) -> float | None:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return None
+
+    def sync_game() -> None:
+        """Takes the settings changed in game, then rewrites the addon's data file if it is stale."""
+        settings = store.settings()
+        if not settings['savedvariables_path']:
+            return
+        export_path = Path(settings['export_path']).expanduser()
+        exported = mtime(export_path)
+        if exported != bridge_state['export_mtime']:
+            bridge_state['export_mtime'] = exported
+            edits, push_at = bridge.game_requests(export_path)
+            newer = bridge.accepted(edits, settings['changed_at'])
+            published = newer.pop('published_characters', None)
+            if newer:
+                store.save_settings(newer)
+            if published is not None:
+                try:
+                    save_share({'published_characters': published})
+                except PushError as e:
+                    importer.status['push_error'] = str(e)
+            if push_at > int(settings['game_push_handled']):
+                store.save_settings({'game_push_handled': push_at})
+                if settings['server_url'] and settings['server_token']:
+                    try:
+                        push_all()
+                    except PushError as e:
+                        importer.status['push_error'] = str(e)
+
+        folder = target_dir(Path(settings['savedvariables_path']))
+        if not is_installed(Path(settings['savedvariables_path'])):
+            return
+        key = (store.latest_scan_id(), json.dumps(store.settings(), sort_keys=True), exported,
+               importer.status['push_error'], str(folder))
+        # The install button copies the empty data file back over a written one.
+        if key == bridge_state['key'] and mtime(folder / bridge.FILE_NAME) == bridge_state['written']:
+            return
+        try:
+            exports = load_exports(export_path)
+        except LuaParseError:
+            # The game may be writing the file; its next save changes the key and retries.
+            exports = []
+        data = bridge.build(store, items(), exports, importer.status['push_error'])
+        path = bridge.write(folder, data, int(time.time()))
+        bridge_state.update(key=key, written=mtime(path))
+        importer.status['bridge_error'] = None
+
+    def sync_game_safely() -> None:
+        try:
+            # The install button and the watch loop run this on different threads.
+            with bridge_lock:
+                sync_game()
+        except Exception as e:
+            # The game's copy is a convenience; it must never stop an import.
+            importer.status['bridge_error'] = str(e)
+            log.exception('writing the addon data failed')
+
+    bridge_state: dict = {'export_mtime': None, 'key': None, 'written': None}
+    bridge_lock = threading.Lock()
+    importer.status['bridge_error'] = None
+    app.state.sync_game = sync_game
 
     # Mounted last: a mount swallows every path registered after it.
     app.mount('/', StaticFiles(directory=STATIC), name='static')

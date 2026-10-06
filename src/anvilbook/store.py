@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -27,6 +28,9 @@ DEFAULT_SETTINGS = {
     'server_token': '',
     'push_prices': False,
     'published_characters': {},
+    # Unix time of each key's last change: the game edits settings too, and the newer change wins.
+    'changed_at': {},
+    'game_push_handled': 0,
 }
 
 SCHEMA = '''
@@ -145,6 +149,12 @@ class Store:
         unknown = values.keys() - DEFAULT_SETTINGS.keys()
         if unknown:
             raise KeyError(f'unknown settings: {sorted(unknown)}')
+        current = self.settings()
+        # The web form saves every field; stamping unchanged ones would beat newer game edits.
+        now = int(time.time())
+        stamped = {k: now for k, v in values.items() if k != 'changed_at' and current.get(k) != v}
+        if stamped:
+            values = {**values, 'changed_at': {**current['changed_at'], **stamped}}
         with self._lock, self._db:
             self._db.executemany(
                 'INSERT INTO settings VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
