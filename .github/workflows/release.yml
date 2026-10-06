@@ -77,6 +77,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: take this version's notes from the changelog
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            /^## \[/ { p = index($0, "[" v "]") == 4; next }
+            /^\[/ { p = 0 }
+            p' CHANGELOG.md > notes.md
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -90,4 +97,5 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: release/*
+          body_path: notes.md
           generate_release_notes: true

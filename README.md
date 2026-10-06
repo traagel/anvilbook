@@ -192,6 +192,10 @@ your working copy. Tell git to leave it alone:
 git update-index --skip-worktree src/anvilbook/addon/AnvilbookExport/AnvilbookData.lua
 ```
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
 ## Credits
 
 - Item and recipe data: [nexus-devs/wow-classic-items](https://github.com/nexus-devs/wow-classic-items) (MIT)

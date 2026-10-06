@@ -97,5 +97,7 @@ Everything is written to its own SavedVariables file. The addon itself sends not
   APIs, and writes its own saved file.
 - Free and open source, MIT licence. Code, issues, and the app itself:
   [github.com/traagel/anvilbook](https://github.com/traagel/anvilbook)
+- What changed in each version:
+  [CHANGELOG.md](https://github.com/traagel/anvilbook/blob/main/CHANGELOG.md)
 
 Not affiliated with Blizzard Entertainment.
