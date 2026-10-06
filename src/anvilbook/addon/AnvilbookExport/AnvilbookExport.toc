@@ -14,5 +14,6 @@ Sync.lua
 Model.lua
 UI\Widgets.lua
 UI\Window.lua
+UI\Crafts.lua
 UI\Options.lua
 UI\Minimap.lua
