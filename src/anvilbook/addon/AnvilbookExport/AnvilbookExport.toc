@@ -19,6 +19,8 @@ UI\Plan.lua
 UI\AhPanel.lua
 UI\History.lua
 UI\Sellthrough.lua
+UI\Share.lua
+UI\Settings.lua
 UI\Tooltip.lua
 UI\Options.lua
 UI\Minimap.lua
