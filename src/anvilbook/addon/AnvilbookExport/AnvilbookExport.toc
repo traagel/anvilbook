@@ -17,5 +17,6 @@ UI\Window.lua
 UI\Crafts.lua
 UI\Plan.lua
 UI\AhPanel.lua
+UI\Tooltip.lua
 UI\Options.lua
 UI\Minimap.lua
