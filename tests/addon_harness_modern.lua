@@ -71,7 +71,8 @@ time = os.time
 SlashCmdList = {}
 
 AnvilbookExportDB = {version = 1, characters = {["Stale - Realm"] = {professions = {}}}}
-assert(loadfile(arg[1]))("AnvilbookExport", {})
+local ns = {}
+assert(loadfile(arg[1]))("AnvilbookExport", ns)
 assert(handler and registered.TRADE_SKILL_SHOW and registered.TRADE_SKILL_LIST_UPDATE, "events registered")
 
 local function professions()
@@ -177,7 +178,7 @@ handler(frame, "LOOT_OPENED")
 assert(#AnvilbookExportDB.disenchants == 1, "loot without a disenchant cast is ignored")
 
 state.filtered = {111, 222}
-SlashCmdList["ANVILBOOK"]()
+ns.probe()
 local p = AnvilbookExportDB.probe
 assert(p.profession == "Blacksmithing" and p.allCount == 5 and p.filteredCount == 2, "probe reports the API state")
 assert(p.firstRecipe.name == "Deadly Bronze Poniard", "probe includes the first recipe")

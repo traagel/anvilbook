@@ -1,3 +1,5 @@
+local _, ns = ...
+
 -- Bumped when a fix makes older saved data wrong; it is then thrown away.
 local VERSION = 5
 local RETRIES = 5
@@ -212,6 +214,7 @@ local function run(event, attempt)
   if profession and reported[profession] ~= recorded then
     reported[profession] = recorded
     print(("Anvilbook: %d %s recipes recorded"):format(recorded, profession))
+    ns.invalidate()
   end
   -- Item data and the recipe list arrive late, and the client may have no update event.
   if C_Timer and (attempt or 0) < RETRIES then
@@ -257,14 +260,13 @@ local function character()
   return db.characters[key]
 end
 
--- The shopping list subtracts what the character already carries.
-local function recordBags()
+local function readBags()
   local containers = C_Container or _G
   local numSlots = containers.GetContainerNumSlots or GetContainerNumSlots
   local slotInfo = containers.GetContainerItemInfo
   local itemIdAt = containers.GetContainerItemID or GetContainerItemID
   if not numSlots then
-    return
+    return nil
   end
   local bags = {}
   for bag = 0, 4 do
@@ -280,6 +282,15 @@ local function recordBags()
         bags[id] = (bags[id] or 0) + (count or 1)
       end
     end
+  end
+  return bags
+end
+
+-- The shopping list subtracts what the character already carries.
+local function recordBags()
+  local bags = readBags()
+  if not bags then
+    return
   end
   local char = character()
   char.bags = bags
@@ -310,6 +321,7 @@ local function recordDisenchant()
   while #log > DISENCHANT_LOG_LIMIT do
     table.remove(log, 1)
   end
+  ns.invalidate()
 end
 
 -- Reports what the client's API returns, because it differs from retail and from classic.
@@ -338,8 +350,13 @@ local function probe()
     tostring(recipe and recipe.name)))
 end
 
-SLASH_ANVILBOOK1 = "/anvilbook"
-SlashCmdList["ANVILBOOK"] = probe
+ns.probe = probe
+ns.readBags = readBags
+ns.characterKey = function()
+  return UnitName("player") .. " - " .. GetRealmName()
+end
+-- Model.lua replaces this; the recorder loads first.
+ns.invalidate = function() end
 
 frame:SetScript("OnEvent", function(_, event, ...)
   if event == "UNIT_SPELLCAST_SENT" then

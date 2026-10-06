@@ -1,7 +1,18 @@
 ## Interface: 16001, 11508, 11509
-## Title: Anvilbook Export
-## Notes: Records known trade skill recipes for the anvilbook app.
-## Version: 1.0
+## Title: Anvilbook
+## Notes: Crafting profits, shopping lists and price history from the anvilbook app.
+## Version: 2.0
 ## SavedVariables: AnvilbookExportDB
 
+AnvilbookData.lua
 AnvilbookExport.lua
+Codec.lua
+Calc.lua
+Items.lua
+Prices.lua
+Sync.lua
+Model.lua
+UI\Widgets.lua
+UI\Window.lua
+UI\Options.lua
+UI\Minimap.lua
