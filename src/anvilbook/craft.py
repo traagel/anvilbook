@@ -126,7 +126,7 @@ class Calculator:
     def recipe_options(self, recipe: dict, depth: int, item_id: int = 0) -> list[Option]:
         per_reagent = []
         for r in recipe['reagents']:
-            name = (self.items.get(r['itemId']) or {}).get('name', str(r['itemId']))
+            name = (self.items.get(r['itemId']) or {}).get('name') or str(r['itemId'])
             per_reagent.append([(p * r['amount'], c * r['amount'], name, path, node)
                                 for p, c, path, node in self.options(r['itemId'], depth)])
         out = []
@@ -164,5 +164,6 @@ class Calculator:
                     cost, revenue, revenue - cost, casts, per_cast, per_cast * 3600 / self.s.cast_seconds,
                     price['available'], path, revenue - cheap_cost, cheap_casts, cheap_path,
                     recipe.get('difficulty'), de_value, 'disenchant' if de_value > sale else 'sell'))
-        out.sort(key=lambda r: -r.per_hour)
+        # The item id breaks ties, so the Lua port in the addon sorts the same way.
+        out.sort(key=lambda r: (-r.per_hour, r.item_id))
         return out
