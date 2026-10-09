@@ -1,19 +1,31 @@
 local _, ns = ...
 
-local RADIUS = 80
 local button
 
+-- The minimap's frame can be larger than the map you see, so the default distance is a guess
+-- that dragging corrects.
+local function defaultRadius()
+  return Minimap:GetWidth() * 3 / 8 + 10
+end
+
 local function place()
-  local angle = math.rad(ns.ui().minimapAngle or 200)
+  local ui = ns.ui()
+  local angle = math.rad(ui.minimapAngle or 200)
+  local radius = ui.minimapRadius or defaultRadius()
   button:ClearAllPoints()
-  button:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * RADIUS, math.sin(angle) * RADIUS)
+  button:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * radius, math.sin(angle) * radius)
 end
 
 local function follow()
   local mx, my = Minimap:GetCenter()
   local cx, cy = GetCursorPosition()
   local scale = Minimap:GetEffectiveScale()
-  ns.ui().minimapAngle = math.deg(math.atan2(cy / scale - my, cx / scale - mx))
+  local dx, dy = cx / scale - mx, cy / scale - my
+  local width = Minimap:GetWidth()
+  local ui = ns.ui()
+  ui.minimapAngle = math.deg(math.atan2(dy, dx))
+  -- Kept near the edge, so a slip of the mouse cannot lose the button.
+  ui.minimapRadius = math.max(width / 4, math.min(width, math.sqrt(dx * dx + dy * dy)))
   place()
 end
 
