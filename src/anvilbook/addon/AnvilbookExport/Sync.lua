@@ -57,6 +57,7 @@ function Sync.settings()
   end
   out.published_characters = share.published_characters or {}
   out.disenchant_table = app.disenchant_table or Sync.DEFAULT_TABLE
+  out.skill_overrides = app.skill_overrides or {}
   local changed = app.changed_at or {}
   for key, edit in pairs(db().edits) do
     if type(edit) == "table" and (edit.time or 0) > (changed[key] or 0) then

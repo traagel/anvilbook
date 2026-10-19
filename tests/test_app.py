@@ -211,7 +211,10 @@ def test_character_can_be_selected(env, tmp_path):
     assert chars[1]['maxRanks'] == {'Mining': 150}
     status = client.get('/api/status').json()
     assert (status['export']['character'], status['pinned']) == ('Thordak - Classic Beta PvP', None)
-    assert [r['name'] for r in client.get('/api/crafts').json()] == ['Copper Bar']
+    crafts = client.get('/api/crafts').json()
+    assert [r['name'] for r in crafts if r['learned']] == ['Copper Bar']
+    # Smelting 99 is enough to learn the database's Tin Bar and Bronze Bar (65).
+    assert sorted((r['name'], r['skill']) for r in crafts if not r['learned']) == [('Bronze Bar', 65), ('Tin Bar', 65)]
 
     client.put('/api/settings', json={'character': 'Eilistaree - Classic Beta PvP'})
 
@@ -220,7 +223,12 @@ def test_character_can_be_selected(env, tmp_path):
     assert status['pinned'] == 'Eilistaree - Classic Beta PvP'
     assert status['export']['professions'] == {'Mining': 40}
     # The database still knows a Blacksmithing recipe, but this character has no Blacksmithing.
-    assert [r['name'] for r in client.get('/api/crafts').json()] == ['Tin Bar']
+    crafts = client.get('/api/crafts').json()
+    assert [r['name'] for r in crafts if r['learned']] == ['Tin Bar']
+    assert all(r['profession'] == 'Mining' for r in crafts)
+
+    everything = client.get('/api/crafts', params={'all': 'true'}).json()
+    assert len(everything) >= len(crafts) and all(r['skill'] <= 40 for r in everything)
 
 
 def test_disenchant_needs_enchanting_or_the_assume_switch(env):

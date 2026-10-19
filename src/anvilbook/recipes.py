@@ -51,11 +51,15 @@ def export_skills(export: GameExport) -> dict[str, int]:
 
 def merge(items: dict[int, dict], export: GameExport) -> dict[int, dict]:
     exported = set(export.professions)
+    known = {(p, int(i)) for p, data in export.professions.items() for i in data.get('recipes') or {}}
     out = {}
     for item_id, item in items.items():
         recipes = item.get('createdBy') or []
-        kept = [r for r in recipes if r.get('category') not in exported]
-        out[item_id] = {**item, 'createdBy': kept} if len(kept) != len(recipes) else item
+        # The game's list of a recorded profession is the truth for what the character knows, so
+        # the item database adds only recipes it can still learn.
+        kept = [r if r.get('category') not in exported else {**r, 'unlearned': True}
+                for r in recipes if (r.get('category'), item_id) not in known]
+        out[item_id] = {**item, 'createdBy': kept} if kept != recipes else item
     for prof, data in export.professions.items():
         for item_id, rec in (data.get('recipes') or {}).items():
             reagents = _array(rec.get('reagents'))

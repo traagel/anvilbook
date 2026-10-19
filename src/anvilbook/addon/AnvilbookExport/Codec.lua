@@ -63,6 +63,24 @@ function Codec.item(s)
   return item
 end
 
+-- bridge.database_recipes: "profession|skill|min|max|id:count,id:count", one per recipe, joined by ";".
+function Codec.recipes(s)
+  local out = {}
+  for _, packed in ipairs(Codec.split(s, ";")) do
+    local f = Codec.split(packed, "|")
+    local reagents = {}
+    for _, reagent in ipairs(Codec.split(f[5], ",")) do
+      local id, amount = reagent:match("^(%d+):(%d+)$")
+      if id then
+        reagents[#reagents + 1] = {itemId = tonumber(id), amount = tonumber(amount)}
+      end
+    end
+    out[#out + 1] = {category = f[1], requiredSkill = tonumber(f[2]) or 0,
+                     amount = {tonumber(f[3]) or 1, tonumber(f[4]) or 1}, reagents = reagents}
+  end
+  return out
+end
+
 -- One entry for each scan in AnvilbookData.scans: {min_price, available}, or false when unlisted.
 function Codec.history(s, scans)
   local out = {}

@@ -110,6 +110,19 @@ def recipe_items(exports: list[GameExport]) -> dict[int, str | None]:
     return out
 
 
+def database_recipes(items: dict[int, dict], professions: set[str]) -> dict[int, str]:
+    """The item database's recipes of these professions, for the game's Unlearned list.
+    Codec.recipes reads the format."""
+    out = {}
+    for item_id, item in items.items():
+        packed = [f"{r['category']}|{int(r.get('requiredSkill') or 0)}|{r['amount'][0]}|{r['amount'][1]}|"
+                  + ','.join(f"{x['itemId']}:{x['amount']}" for x in r['reagents'])
+                  for r in item.get('createdBy') or [] if r.get('category') in professions]
+        if packed:
+            out[item_id] = ';'.join(packed)
+    return out
+
+
 def build(store, items: dict[int, dict], exports: list[GameExport], share_error: str | None) -> dict:
     settings = store.settings()
     scans = store.scans()[-HISTORY_SCANS:]
@@ -117,9 +130,14 @@ def build(store, items: dict[int, dict], exports: list[GameExport], share_error:
     latest = per_scan[-1] if per_scan else {}
     listed = set().union(*per_scan) if per_scan else set()
     from_game = recipe_items(exports)
+    database = database_recipes(items, {p for e in exports for p in e.professions})
+    from_database = set(database)
+    for item_id in database:
+        for recipe in items[item_id].get('createdBy') or []:
+            from_database.update(r['itemId'] for r in recipe['reagents'])
 
     packed = {}
-    for item_id in sorted(listed | from_game.keys()):
+    for item_id in sorted(listed | from_game.keys() | from_database):
         item = items.get(item_id) or {}
         name = item.get('name') or from_game.get(item_id) or ''
         packed[item_id] = '|'.join(_field(item.get(k)) for k in (
@@ -141,7 +159,10 @@ def build(store, items: dict[int, dict], exports: list[GameExport], share_error:
                            for i, p in sorted(latest.items())),
         'vendor': ';'.join(f'{i}:{p}' for i, p in sorted(store.vendor_prices().items())),
         'history': history,
+        'recipes': database,
         'settings': {**{k: settings[k] for k in CALC_KEYS},
+                     # JSON keeps the item ids as text; the game looks them up as numbers.
+                     'skill_overrides': {int(k): int(v) for k, v in settings['skill_overrides'].items()},
                      'changed_at': {k: int(t) for k, t in changed_at.items() if k in GAME_KEYS}},
         'share': {'server_url': settings['server_url'], 'username': settings['server_username'],
                   'signed_in': bool(settings['server_token']), 'push_prices': bool(settings['push_prices']),

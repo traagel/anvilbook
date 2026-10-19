@@ -4,6 +4,7 @@ local _, ns = ...
 
 local FORMAT = 1
 local model
+local database
 local listeners = {}
 local pending = false
 
@@ -61,6 +62,17 @@ function ns.invalidate()
   end
 end
 
+-- Decoded once: the data file stays the same until the next /reload.
+local function recipeDatabase(data)
+  if not database then
+    database = {}
+    for itemId, packed in pairs(data and data.recipes or {}) do
+      database[itemId] = ns.Codec.recipes(packed)
+    end
+  end
+  return database
+end
+
 function ns.character()
   local key = ns.characterKey()
   local characters = AnvilbookExportDB and AnvilbookExportDB.characters or {}
@@ -86,6 +98,17 @@ function ns.model()
       end
     end
   end
+  local db = recipeDatabase(data)
+  for itemId, recipes in pairs(db) do
+    for _, recipe in ipairs(recipes) do
+      if professions[recipe.category] then
+        ids[itemId] = true
+        for _, reagent in ipairs(recipe.reagents) do
+          ids[reagent.itemId] = true
+        end
+      end
+    end
+  end
 
   local prices, live = ns.Prices.build(data, ids)
   local vendor = ns.Prices.vendor(data, ids)
@@ -107,11 +130,11 @@ function ns.model()
   for id in pairs(ids) do
     add(id)
   end
-  ns.Calc.merge(items, professions)
+  ns.Calc.merge(items, professions, db)
 
   local records = AnvilbookExportDB and AnvilbookExportDB.disenchants or {}
   local calc = ns.Calc.new(items, prices, vendor, {
-    skills = skills, skill_overrides = {}, max_use_level = settings.max_use_level,
+    skills = skills, skill_overrides = settings.skill_overrides, max_use_level = settings.max_use_level,
     min_listed = settings.min_listed, cast_seconds = settings.cast_seconds, ah_cut = settings.ah_cut,
     disenchanter = settings.assume_enchanter and true or skills.Enchanting ~= nil,
     disenchant_table = ns.Calc.effectiveTable(settings.disenchant_table, records, settings.min_disenchant_samples),
@@ -121,15 +144,21 @@ function ns.model()
   return model
 end
 
-function ns.rows()
+-- The rows, and the learned rows by item id. showAll keeps losses too (Calculator:rows).
+function ns.rows(showAll)
   local m = ns.model()
-  if not m.rows then
-    m.rows, m.rowsById = m.calc:rows(), {}
-    for _, row in ipairs(m.rows) do
-      m.rowsById[row.item_id] = m.rowsById[row.item_id] or row
+  local key = showAll and "all" or "profitable"
+  m.rows = m.rows or {}
+  if not m.rows[key] then
+    local rows, byId = m.calc:rows(showAll), {}
+    for _, row in ipairs(rows) do
+      if row.learned and not byId[row.item_id] then
+        byId[row.item_id] = row
+      end
     end
+    m.rows[key] = {rows = rows, byId = byId}
   end
-  return m.rows, m.rowsById
+  return m.rows[key].rows, m.rows[key].byId
 end
 
 -- Points for each scan in data.scans: {min_price, available}, or false when the item was not listed.

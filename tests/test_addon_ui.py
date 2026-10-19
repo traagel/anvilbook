@@ -52,6 +52,9 @@ def test_the_app_writes_the_data_file(written):
     assert data['items'][3490].endswith('|Deadly Bronze Poniard')
     assert data['history'][3490] == '17500,100;17510,80'
     assert '3490:17510:80:' in data['prices']
+    # The export records Smelting only, so Blacksmithing's poniard is not sent.
+    assert data['recipes'][3576] == 'Mining|65|1|1|2771:1' and 3490 not in data['recipes']
+    assert data['settings']['skill_overrides'] == {3490: 100}
 
 
 def test_the_ui_runs_on_app_data(written):

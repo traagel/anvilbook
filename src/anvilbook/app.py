@@ -202,9 +202,9 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         return Calculator(known, store.prices(scan_id), store.vendor_prices(), settings), exp
 
     @app.get('/api/crafts')
-    def crafts():
+    def crafts(show_all: bool = Query(False, alias='all')):
         calc, _ = calculator()
-        return [asdict(r) for r in calc.rows()] if calc else []
+        return [asdict(r) for r in calc.rows(show_all)] if calc else []
 
     @app.get('/api/plan')
     def plan(item_id: int, budget: int, count: int | None = None, use_bags: bool = True):

@@ -56,5 +56,6 @@ def add_crafts_route(app, database, items_loader) -> None:
             settings.skills = {p: int(d.get('rank') or 0) for p, d in export.professions.items()}
         else:
             settings.skills = dict(PUBLIC_SKILLS)
-        rows = Calculator(items, prices, {}, settings).rows()
+        # The site shows what a published character crafts today, not what it could learn.
+        rows = [row for row in Calculator(items, prices, {}, settings).rows() if row.learned]
         return [asdict(row) for row in rows[:limit]]

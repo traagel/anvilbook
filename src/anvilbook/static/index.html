@@ -33,7 +33,9 @@ nav button.active { color:var(--fg); border-bottom-color:var(--accent); }
 #professions .bar { width:100%; height:2px; background:var(--line); }
 #professions .bar i { display:block; height:2px; background:var(--accent); }
 #empty { color:var(--muted); padding:1rem 0; }
-#enchanter-box { margin:0 0 .2rem; color:var(--muted); font-size:12px; display:flex; gap:.3rem; align-items:center; }
+#enchanter-box, #recipe-filter label { margin:0 0 .2rem; color:var(--muted); font-size:12px; display:flex; gap:.3rem; align-items:center; }
+#recipe-filter { display:flex; gap:.8rem; }
+.loss { color:var(--bad); }
 #plan-form { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
 #plan-form label { margin:0; display:flex; gap:.4rem; align-items:center; }
 #plan-result { margin-top:1rem; max-width:52rem; }
@@ -121,6 +123,11 @@ input[type=text] { width:100%; max-width:40rem; }
   <div id="characters" role="group" aria-label="Character"></div>
   <div id="professions" role="group" aria-label="Professions"></div>
   <label id="enchanter-box"><input type="checkbox" id="enchanter"> Assume enchanter</label>
+  <div id="recipe-filter" role="group" aria-label="Recipes">
+    <label title="Also crafts that lose money, have no AH price, or have few listings"><input type="checkbox" id="crafts-all"> All</label>
+    <label><input type="radio" name="learned" value="learned" checked> Learned</label>
+    <label title="Recipes your skill lets you learn now"><input type="radio" name="learned" value="unlearned"> Unlearned</label>
+  </div>
 </header>
 <main>
   <section id="crafts" class="active">
@@ -250,10 +257,10 @@ const craftCols = [
    cls: (v, r) => r.difficulty ? 'd-' + r.difficulty : ''},
   {key: 'cost', label: 'Cost', fmt: money},
   {key: 'revenue', label: 'Net sale', fmt: money},
-  {key: 'profit', label: 'Profit', fmt: money},
+  {key: 'profit', label: 'Profit', fmt: money, cls: v => v < 0 ? 'loss' : ''},
   {key: 'exit', label: 'Exit', cls: (v) => v === 'disenchant' ? 'd-optimal' : ''},
   {key: 'de_value', label: 'Disenchant', fmt: v => v ? money(v) : ''},
-  {key: 'casts', label: 'Casts', fmt: v => v.toFixed(1)},
+  {key: 'casts', label: 'Casts', fmt: v => v == null ? '' : v.toFixed(1)},
   {key: 'per_cast', label: 'Per cast', fmt: money},
   {key: 'per_hour', label: 'Per hour', fmt: money},
   {key: 'listed', label: 'Listed'},
@@ -261,14 +268,18 @@ const craftCols = [
 
 let crafts = [];
 let professionFilter = null;
+let showAll = false;
+let showLearned = true;
 
 function showCrafts() {
-  const rows = professionFilter ? crafts.filter(r => r.profession === professionFilter) : crafts;
+  const rows = crafts.filter(r => r.learned === showLearned
+                                  && (!professionFilter || r.profession === professionFilter));
   const empty = $('#empty');
   empty.hidden = rows.length > 0;
   if (!rows.length) {
-    empty.textContent = crafts.length
-      ? `Nothing in ${professionFilter} makes a profit in the latest scan.`
+    empty.textContent = !showAll
+      ? 'Nothing here makes a profit in the latest scan. Tick All to see every recipe.'
+      : crafts.length ? 'No recipes to show.'
       : 'No crafts yet. Scan the auction house and open a profession window, then /reload in game.';
   }
   renderTable($('#crafts-table'), craftCols, rows, (r, tr) => {
@@ -278,8 +289,10 @@ function showCrafts() {
     d.className = 'detail';
     const td = d.insertCell();
     td.colSpan = craftCols.length;
-    td.textContent = `Best per cast: ${r.path}. Cheapest path: ${money(r.cheapest_profit)} profit in ` +
-      `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}. `;
+    td.textContent = r.cost == null
+      ? 'A reagent has no AH or vendor price in the latest scan, so the cost is unknown. '
+      : `Best per cast: ${r.path}. Cheapest path: ${money(r.cheapest_profit)} profit in ` +
+        `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}. `;
     const go = document.createElement('button');
     go.textContent = 'Plan a batch';
     go.onclick = event => { event.stopPropagation(); planFor(r.item_id); };
@@ -288,7 +301,7 @@ function showCrafts() {
 }
 
 async function loadCrafts() {
-  crafts = await api('/api/crafts');
+  crafts = await api('/api/crafts' + (showAll ? '?all=true' : ''));
   showCrafts();
   showProfessions();
   showPlanItems();
@@ -361,7 +374,8 @@ function showPlanItems() {
   const chosen = sel.value;
   sel.innerHTML = '';
   for (const r of crafts) {
-    sel.add(new Option(`${r.name} (${money(r.profit)} each)`, r.item_id));
+    const profit = r.profit == null ? 'cost unknown' : `${money(r.profit)} each`;
+    sel.add(new Option(`${r.name} (${profit}${r.learned ? '' : ', unlearned'})`, r.item_id));
   }
   if (chosen) sel.value = chosen;
 }
@@ -438,6 +452,18 @@ async function loadSellthrough() {
 }
 $('#st-from').onchange = loadSellthrough;
 $('#st-to').onchange = loadSellthrough;
+
+$('#crafts-all').onchange = e => {
+  showAll = e.target.checked;
+  loadCrafts();
+};
+for (const radio of document.querySelectorAll('input[name="learned"]')) {
+  radio.onchange = () => {
+    showLearned = radio.value === 'learned';
+    showProfessions();
+    showCrafts();
+  };
+}
 
 $('#enchanter').onchange = async e => {
   await api('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
@@ -558,7 +584,7 @@ function showProfessions() {
   const current = characters.find(c => c.character === active);
   if (!current) return;
   for (const [name, rank] of Object.entries(current.professions)) {
-    const count = crafts.filter(r => r.profession === name).length;
+    const count = crafts.filter(r => r.profession === name && r.learned === showLearned).length;
     const b = document.createElement('button');
     b.setAttribute('aria-pressed', String(professionFilter === name));
     b.disabled = count === 0;

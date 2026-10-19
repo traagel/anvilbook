@@ -1,8 +1,10 @@
--- usage: luajit calc_parity.lua <path to Calc.lua> <case file>
+-- usage: luajit calc_parity.lua <addon folder> <case file>
 -- Runs the addon's calculator on a case that test_calc_parity.py wrote, and prints the result
 -- in SavedVariables form so the app's own parser can read it back.
 local ns = {}
-assert(loadfile(arg[1]))("AnvilbookExport", ns)
+for _, file in ipairs({"Codec.lua", "Calc.lua"}) do
+  assert(loadfile(arg[1] .. "/" .. file))("AnvilbookExport", ns)
+end
 assert(loadfile(arg[2]))()
 local Calc = ns.Calc
 
@@ -31,7 +33,15 @@ local function dump(v)
   return "nil"
 end
 
-local calc = Calc.new(Case.items, Case.prices, Case.vendor, Case.settings)
+local items = Case.items
+if Case.database then
+  local database = {}
+  for itemId, packed in pairs(Case.database) do
+    database[itemId] = ns.Codec.recipes(packed)
+  end
+  items = Calc.merge(items, Case.professions, database)
+end
+local calc = Calc.new(items, Case.prices, Case.vendor, Case.settings)
 local plans = {}
 for i, p in ipairs(Case.plans) do
   if p.budget then
@@ -41,4 +51,4 @@ for i, p in ipairs(Case.plans) do
   end
 end
 local effective = Calc.effectiveTable(Case.settings.disenchant_table, Case.records, Case.min_samples)
-io.write("Result = ", dump({rows = calc:rows(), plans = plans, effective = effective}), "\n")
+io.write("Result = ", dump({rows = calc:rows(Case.show_all), plans = plans, effective = effective}), "\n")

@@ -70,6 +70,40 @@ def test_filters():
     assert Calculator(ITEMS, PRICES, {}, settings(min_listed=200)).rows() == []
 
 
+def test_show_all_keeps_losses_unpriced_outputs_and_thin_markets():
+    prices = {i: p for i, p in PRICES.items() if i != 2840}
+    prices[2841] = {'min_price': 50, 'available': 1}
+    calc = Calculator(ITEMS, prices, {}, settings())
+    assert row(calc.rows(), 2841) is None and row(calc.rows(), 2840) is None
+    everything = calc.rows(show_all=True)
+    bronze, copper = row(everything, 2841), row(everything, 2840)
+    assert bronze.profit < 0 and bronze.listed == 1
+    assert (copper.revenue, copper.listed) == (0, 0)
+    hours = [r.per_hour for r in everything]
+    assert hours == sorted(hours, reverse=True) and hours[-1] < 0
+
+
+def test_show_all_keeps_a_recipe_whose_reagent_has_no_price():
+    prices = {i: p for i, p in PRICES.items() if i != 2771}
+    calc = Calculator(ITEMS, prices, {}, settings())
+    assert row(calc.rows(), 3576) is None
+    everything = calc.rows(show_all=True)
+    tin = row(everything, 3576)
+    assert (tin.cost, tin.profit, tin.per_hour) == (None, None, None)
+    assert tin.revenue == pytest.approx(248 * 0.95)
+    assert everything[-1] is tin
+
+
+def test_unlearned_recipes_are_rows_but_never_steps():
+    tin = {**recipe('Mining', 65, [(2771, 1)]), 'unlearned': True}
+    items = {**ITEMS, 3576: {'name': 'Tin Bar', 'createdBy': [tin]}}
+    calc = Calculator(items, PRICES, {}, settings())
+    rows = calc.rows(show_all=True)
+    assert row(rows, 3576).learned is False and row(rows, 2840).learned is True
+    assert [path for _, _, path, _ in calc.options(3576)] == ['buy']
+    assert 'Tin Bar=craft' not in row(rows, 2841).cheapest_path
+
+
 def test_vendor_price_beats_ah():
     items = {**ITEMS, 2771: {'name': 'Tin Ore', 'vendorPrice': 150}}
     price = lambda calc: [(p, c, path) for p, c, path, _ in calc.options(2771)]

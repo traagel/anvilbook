@@ -28,9 +28,9 @@ local function addLines(tooltip, id)
       add("since the scan before", ("%s%+.0f%%|r"):format(color, change))
     end
   end
-  local _, byId = ns.rows()
+  local _, byId = ns.rows(true)
   local row = byId[id]
-  if row then
+  if row and row.per_cast then
     add("craft profit", W.money(row.per_cast) .. " per cast")
   end
   if m.calc.s.disenchanter then

@@ -134,8 +134,9 @@ def test_merge_replaces_exported_professions(tmp_path):
         'amount': [1, 1], 'requiredSkill': 0, 'category': 'Blacksmithing', 'known': True,
         'difficulty': 'optimal', 'reagents': [{'itemId': 2841, 'amount': 3}, {'itemId': 99999, 'amount': 1}]}]
     assert merged[3490]['requiredLevel'] == 20
-    assert merged[2871]['createdBy'] == []
-    assert merged[2842]['createdBy'] == []
+    # Recorded professions keep the database recipes the character does not know, marked unlearned.
+    assert merged[2871]['createdBy'] == [{**ITEMS[2871]['createdBy'][0], 'unlearned': True}]
+    assert merged[2842]['createdBy'] == [{**ITEMS[2842]['createdBy'][0], 'unlearned': True}]
     assert merged[5000]['createdBy'] == ITEMS[5000]['createdBy']
     assert merged[2841]['createdBy'][0]['amount'] == [2, 2]
     assert merged[2841]['createdBy'][0]['category'] == 'Mining'

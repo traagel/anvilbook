@@ -98,6 +98,12 @@ local function click(button, which)
   button.scripts.OnClick(button, which or "LeftButton")
 end
 
+local function checkbox(label)
+  for _, o in ipairs(created) do
+    if o.kind == "CheckButton" and o.label and o.label._text == label then return o end
+  end
+end
+
 local function fire(event, ...)
   for _, o in ipairs(created) do
     if o.events[event] and o.scripts.OnEvent then
@@ -182,9 +188,9 @@ Auctionator = {API = {v1 = {
 AnvilbookExportDB = {
   version = 5,
   characters = {["Thordak - Classic Beta PvP"] = {professions = {
+    -- No Tin Bar: the app's item database offers it as an unlearned recipe.
     Smelting = {rank = 120, maxRank = 150, recipes = {
       [2840] = {name = "Copper Bar", minMade = 1, maxMade = 1, difficulty = "trivial", reagents = {{id = 2770, count = 1}}},
-      [3576] = {name = "Tin Bar", minMade = 1, maxMade = 1, difficulty = "easy", reagents = {{id = 2771, count = 1}}},
       [2841] = {name = "Bronze Bar", minMade = 2, maxMade = 2, difficulty = "medium",
                 reagents = {{id = 2840, count = 1}, {id = 3576, count = 1}}}}},
     Blacksmithing = {rank = 120, maxRank = 150, recipes = {
@@ -222,9 +228,30 @@ check(#texts("Deadly Bronze Poniard") > 0, "the crafts table shows the poniard")
 if dataFile then
   check(#texts("Prices: app scan") > 0, "the status line names the app scan")
 else
-  check(#texts("live from Auctionator for 6 items") > 0, "the status line counts the live prices")
+  check(#texts("live from Auctionator for 5 items") > 0, "the status line counts the live prices")
   check(rows[1].listed == nil, "a live-only price has no listed count")
 end
+
+local all, unlearned = checkbox("All"), checkbox("Unlearned")
+check(all and unlearned and checkbox("Learned").checked, "Crafts has the All, Learned and Unlearned boxes")
+all:SetChecked(true)
+click(all)
+check(AnvilbookExportDB.ui.crafts.all == true and #ns.rows(true) >= #ns.rows(), "All keeps every recipe")
+click(unlearned)
+check(AnvilbookExportDB.ui.crafts.learned == false and checkbox("Learned").checked == false, "one choice at a time")
+if dataFile then
+  local tin
+  for _, row in ipairs(ns.rows(true)) do
+    if row.item_id == 3576 then tin = row end
+  end
+  check(tin and tin.learned == false and tin.skill == 65, "Tin Bar is unlearned, with its required skill")
+  check(#texts("Tin Bar") > 0, "the Unlearned list shows Tin Bar")
+else
+  check(#texts("Unlearned recipes come from the app's item database") > 0, "Unlearned needs the app")
+end
+click(checkbox("Learned"))
+all:SetChecked(false)
+click(all)
 
 ns.openPlan(3490)
 check(#texts("Make ") > 0, "the plan describes the batch")

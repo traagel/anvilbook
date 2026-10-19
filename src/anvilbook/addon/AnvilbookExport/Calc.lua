@@ -9,6 +9,7 @@ Calc.MAX_DEPTH = 3
 Calc.MAX_COUNT = 500
 Calc.QUALITY_NAMES = {[2] = "Uncommon", [3] = "Rare", [4] = "Epic"}
 Calc.ALIASES = {Smelting = "Mining"}
+Calc.NO_PRICE = "a reagent has no price"
 local KINDS = {Armor = "armor", Weapon = "weapon"}
 local KIND_KEYS = {"armor", "weapon"}
 
@@ -176,9 +177,37 @@ function Calc.expectedValue(tbl, prices, quality, itemLevel, kind, ahCut)
 end
 
 -- Recipes recorded in game, merged into item details that carry no createdBy of their own.
-function Calc.merge(items, professions)
+-- database ({[itemId] = {recipe, ...}}, from the app) adds the recipes of a recorded profession
+-- that the character does not know, marked unlearned, ahead of the recorded ones as recipes.merge does.
+function Calc.merge(items, professions, database)
+  local recorded, known = {}, {}
   for profession, data in pairs(professions or {}) do
     profession = Calc.ALIASES[profession] or profession
+    recorded[profession] = data
+    for itemId in pairs(data.recipes or {}) do
+      known[profession .. ":" .. itemId] = true
+    end
+  end
+  local ids = {}
+  for itemId in pairs(database or {}) do
+    ids[#ids + 1] = itemId
+  end
+  table.sort(ids)
+  for _, itemId in ipairs(ids) do
+    for _, recipe in ipairs(database[itemId]) do
+      if recorded[recipe.category] and not known[recipe.category .. ":" .. itemId] then
+        local item = items[itemId] or {}
+        items[itemId] = item
+        item.createdBy = item.createdBy or {}
+        local copy = {unlearned = true}
+        for k, v in pairs(recipe) do
+          copy[k] = v
+        end
+        item.createdBy[#item.createdBy + 1] = copy
+      end
+    end
+  end
+  for profession, data in pairs(recorded) do
     for itemId, rec in pairs(data.recipes or {}) do
       local reagents = {}
       for i, r in ipairs(rec.reagents or {}) do
@@ -260,7 +289,8 @@ function Calculator:options(itemId, depth)
     end
     if depth < Calc.MAX_DEPTH then
       for _, recipe in ipairs((self.items[itemId] or {}).createdBy or {}) do
-        if self:canCraft(itemId, recipe) then
+        -- A step must be something the character can make today.
+        if self:canCraft(itemId, recipe) and not recipe.unlearned then
           local n = (recipe.amount[1] + recipe.amount[2]) / 2
           for _, o in ipairs(self:recipeOptions(recipe, depth + 1, itemId)) do
             opts[#opts + 1] = {o[1] / n, o[2] / n, o[3], o[4]}
@@ -311,24 +341,39 @@ function Calculator:recipeOptions(recipe, depth, itemId)
   return Calc.pareto(out)
 end
 
-function Calculator:rows()
+-- showAll also keeps losses, unpriced outputs and thin markets, as craft.py's rows(show_all) does.
+function Calculator:rows(showAll)
   local out, ids = {}, {}
-  for id in pairs(self.prices) do
+  for id in pairs(showAll and self.items or self.prices) do
     ids[#ids + 1] = id
   end
   table.sort(ids)
   for _, itemId in ipairs(ids) do
     local price, item = self.prices[itemId], self.items[itemId]
     if item and (item.requiredLevel or 0) <= self.s.max_use_level
-        and (price.available == nil or price.available >= self.s.min_listed) then
+        and (showAll or price.available == nil or price.available >= self.s.min_listed) then
       for _, recipe in ipairs(item.createdBy or {}) do
         if self:canCraft(itemId, recipe) then
           local n = (recipe.amount[1] + recipe.amount[2]) / 2
-          local sale = math.max(price.min_price * (1 - self.s.ah_cut), item.sellPrice or 0)
+          local sale = math.max((price and price.min_price or 0) * (1 - self.s.ah_cut), item.sellPrice or 0)
           local deValue = self:disenchantValue(item)
           local revenue = math.max(sale, deValue) * n
           local opts = self:recipeOptions(recipe, 0, itemId)
-          if #opts > 0 then
+          -- No price at all lists 0, as in craft.py; a live price alone has no count.
+          local listed = 0
+          if price then
+            listed = price.available
+          end
+          local row = {
+            item_id = itemId, name = item.name, profession = recipe.category, skill = self:skill(itemId, recipe),
+            revenue = revenue, listed = listed, difficulty = recipe.difficulty, de_value = deValue,
+            exit = deValue > sale and "disenchant" or "sell", learned = not recipe.unlearned,
+          }
+          if #opts == 0 and showAll then
+            -- A reagent with no AH or vendor price leaves the cost unknown.
+            row.path, row.cheapest_path = Calc.NO_PRICE, Calc.NO_PRICE
+            out[#out + 1] = row
+          elseif #opts > 0 then
             local best, bestScore
             for _, o in ipairs(opts) do
               local score = (revenue - o[1]) / o[2]
@@ -337,17 +382,12 @@ function Calculator:rows()
               end
             end
             local cheap = opts[1]
-            if revenue - best[1] > 0 then
+            if showAll or revenue - best[1] > 0 then
               local perCast = (revenue - best[1]) / best[2]
-              out[#out + 1] = {
-                item_id = itemId, name = item.name, profession = recipe.category,
-                skill = self:skill(itemId, recipe), cost = best[1], revenue = revenue,
-                profit = revenue - best[1], casts = best[2], per_cast = perCast,
-                per_hour = perCast * 3600 / self.s.cast_seconds, listed = price.available, path = best[3],
-                cheapest_profit = revenue - cheap[1], cheapest_casts = cheap[2], cheapest_path = cheap[3],
-                difficulty = recipe.difficulty, de_value = deValue,
-                exit = deValue > sale and "disenchant" or "sell",
-              }
+              row.cost, row.profit, row.casts, row.per_cast = best[1], revenue - best[1], best[2], perCast
+              row.per_hour, row.path = perCast * 3600 / self.s.cast_seconds, best[3]
+              row.cheapest_profit, row.cheapest_casts, row.cheapest_path = revenue - cheap[1], cheap[2], cheap[3]
+              out[#out + 1] = row
             end
           end
         end
@@ -355,6 +395,9 @@ function Calculator:rows()
     end
   end
   return stableSort(out, function(a, b)
+    if (a.per_hour == nil) ~= (b.per_hour == nil) then
+      return b.per_hour == nil
+    end
     if a.per_hour ~= b.per_hour then
       return a.per_hour > b.per_hour
     end

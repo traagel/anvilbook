@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from anvilbook.bridge import to_lua
+from anvilbook.bridge import database_recipes, to_lua
 from anvilbook.craft import Calculator, CraftSettings
 from anvilbook.disenchant import DEFAULT_TABLE, GREATER_MAGIC, STRANGE_DUST, effective_table
 from anvilbook.luatable import parse_savedvariables
@@ -47,9 +47,10 @@ PRICES = {2770: 57, 2771: 200, 2840: 73, 3576: 248, 2841: 220, 3490: 17500, 3466
           2852: 300, STRANGE_DUST: 90, GREATER_MAGIC: 1100}
 
 
-def prices(available: int = 10, **over: int) -> dict[int, dict]:
+def prices(available: int = 10, without: tuple = (), **over: int) -> dict[int, dict]:
     merged = {**PRICES, **{int(k[1:]): v for k, v in over.items()}}
-    return {i: {'min_price': p, 'available': available, 'day_high': p * 2} for i, p in merged.items()}
+    return {i: {'min_price': p, 'available': available, 'day_high': p * 2}
+            for i, p in merged.items() if i not in without}
 
 
 def settings(**over) -> CraftSettings:
@@ -74,13 +75,24 @@ EXPORT = GameExport('Thordak - Realm', 0, {'Mining': {'rank': 120, 'recipes': {
            'reagents': {1: {'id': 2840, 'count': 1, 'name': 'Copper Bar'},
                         2: {'id': 3576, 'count': 1, 'name': 'Tin Bar'}}}}}})
 
+def case(items, price_rows, craft_settings, vendor=None, show_all=False, lua_merge=False) -> dict:
+    return {'items': items, 'prices': price_rows, 'settings': craft_settings, 'vendor': vendor or {},
+            'show_all': show_all, 'lua_merge': lua_merge}
+
+
 CASES = {
-    'plain': (ITEMS, prices(), {}, settings()),
+    'plain': case(ITEMS, prices(), settings()),
     # A belt worth less than its dust makes the disenchant exit win.
-    'disenchanter': (ITEMS, prices(i2851=50, i10938=400, i10940=400), {3466: 1800},
-                     settings(disenchanter=True, max_use_level=30)),
-    'thin market': (ITEMS, prices(available=2), {}, settings(min_listed=1, ah_cut=0.15, cast_seconds=2.5)),
-    'known recipes': (merge(ITEMS, EXPORT), prices(), {}, settings()),
+    'disenchanter': case(ITEMS, prices(i2851=50, i10938=400, i10940=400),
+                         settings(disenchanter=True, max_use_level=30), vendor={3466: 1800}),
+    'thin market': case(ITEMS, prices(available=2), settings(min_listed=1, ah_cut=0.15, cast_seconds=2.5)),
+    'known recipes': case(merge(ITEMS, EXPORT), prices(), settings()),
+    # Bronze Bar sells below its cost, Copper Bar has no price, and Tin Bar's ore has no price;
+    # only show_all keeps them.
+    'show all': case(ITEMS, prices(available=2, without=(2840, 2771), i2841=150), settings(), show_all=True),
+    # The game gets the database recipes as text from the app and merges them itself.
+    'unlearned from the app': case(merge(ITEMS, EXPORT), prices(i2840=10), settings(skills={'Mining': 120}),
+                                   show_all=True, lua_merge=True),
 }
 
 
@@ -96,12 +108,12 @@ RECORDS = ([disenchant(2, 19, 'Weapon', (GREATER_MAGIC, 1))] * 2 + [disenchant(2
 MIN_SAMPLES = 3
 
 
-def python_side(items, price_rows, vendor, craft_settings) -> dict:
-    calc = Calculator(items, price_rows, vendor, craft_settings)
+def python_side(c: dict) -> dict:
+    calc = Calculator(c['items'], c['prices'], c['vendor'], c['settings'])
     plans = [asdict(for_budget(calc, p['item_id'], p['budget'], p['owned']) if 'budget' in p
                     else plan_for(calc, p['item_id'], p['count'], p['owned'])) for p in PLANS]
-    return {'rows': [asdict(r) for r in calc.rows()], 'plans': plans,
-            'effective': effective_table(craft_settings.disenchant_table, RECORDS, MIN_SAMPLES)}
+    return {'rows': [asdict(r) for r in calc.rows(c['show_all'])], 'plans': plans,
+            'effective': effective_table(c['settings'].disenchant_table, RECORDS, MIN_SAMPLES)}
 
 
 def as_lists(value):
@@ -115,13 +127,16 @@ def as_lists(value):
     return value
 
 
-def lua_side(tmp_path, items, price_rows, vendor, craft_settings) -> dict:
-    case = tmp_path / 'case.lua'
-    case.write_text('Case = ' + to_lua({'items': items, 'prices': price_rows, 'vendor': vendor,
-                                         'settings': asdict(craft_settings), 'plans': PLANS,
-                                         'records': RECORDS, 'min_samples': MIN_SAMPLES}))
-    out = subprocess.run(['luajit', str(RUNNER), str(ADDON / 'Calc.lua'), str(case)],
-                         capture_output=True, check=True)
+def lua_side(tmp_path, c: dict) -> dict:
+    data = {'items': c['items'], 'prices': c['prices'], 'vendor': c['vendor'], 'settings': asdict(c['settings']),
+            'show_all': c['show_all'], 'plans': PLANS, 'records': RECORDS, 'min_samples': MIN_SAMPLES}
+    if c['lua_merge']:
+        data['items'] = {i: {k: v for k, v in item.items() if k != 'createdBy'} for i, item in ITEMS.items()}
+        data['database'] = database_recipes(ITEMS, set(EXPORT.professions))
+        data['professions'] = EXPORT.professions
+    path = tmp_path / 'case.lua'
+    path.write_text('Case = ' + to_lua(data))
+    out = subprocess.run(['luajit', str(RUNNER), str(ADDON), str(path)], capture_output=True, check=True)
     result = as_lists(parse_savedvariables(out.stdout)['Result'])
     # An empty Lua table cannot tell a list from a dict.
     for plan in result['plans']:
@@ -157,10 +172,16 @@ def without_none(value):
 
 @pytest.mark.parametrize('name', CASES)
 def test_lua_calculator_matches_python(tmp_path, name):
-    items, price_rows, vendor, craft_settings = CASES[name]
-    expected = python_side(items, price_rows, vendor, craft_settings)
+    c = CASES[name]
+    expected = python_side(c)
     assert expected['rows'], 'the case must produce craft rows to compare'
-    if craft_settings.disenchanter:
+    if c['settings'].disenchanter:
         assert any(r['exit'] == 'disenchant' for r in expected['rows'])
+    if c['show_all']:
+        assert any(r['profit'] is not None and r['profit'] < 0 for r in expected['rows'])
+    if c is CASES['show all']:
+        assert any(r['cost'] is None for r in expected['rows'])
+    if c['lua_merge']:
+        assert {r['learned'] for r in expected['rows']} == {True, False}
     # Lua drops nil fields, so a None in Python reads back as a missing key.
-    same(as_lists(without_none(expected)), lua_side(tmp_path, items, price_rows, vendor, craft_settings), name)
+    same(as_lists(without_none(expected)), lua_side(tmp_path, c), name)
