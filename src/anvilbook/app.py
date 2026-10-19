@@ -15,7 +15,7 @@ from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import __version__, bridge
+from . import __version__, bridge, forever
 from .config import config_path, load_config, write_config
 from .craft import Calculator, CraftSettings
 from .disenchant import effective_table, observed, parse_records
@@ -43,7 +43,7 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
 
     def items() -> dict[int, dict]:
         if 'items' not in cache:
-            cache['items'] = load_items(data_dir / 'items.json')
+            cache['items'] = forever.apply(load_items(data_dir / 'items.json'), forever.load())
         return cache['items']
 
     def game_export() -> GameExport | None:
@@ -204,7 +204,10 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
     @app.get('/api/crafts')
     def crafts(show_all: bool = Query(False, alias='all')):
         calc, _ = calculator()
-        return [asdict(r) for r in calc.rows(show_all)] if calc else []
+        if not calc:
+            return []
+        name = lambda item_id: (calc.items.get(item_id) or {}).get('name') if item_id else None
+        return [{**asdict(r), 'pattern_name': name(r.pattern)} for r in calc.rows(show_all)]
 
     @app.get('/api/plan')
     def plan(item_id: int, budget: int, count: int | None = None, use_bags: bool = True):

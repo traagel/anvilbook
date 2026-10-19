@@ -44,6 +44,20 @@ local function count(x)
   return nonzero(tonumber(x)) or 1
 end
 
+-- craft.color: the skill-up color from Forever's thresholds; green starts halfway to grey.
+function Calc.color(rank, recipe)
+  if not recipe.yellow then
+    return nil
+  end
+  if rank < recipe.yellow then
+    return "optimal"
+  end
+  if rank < (recipe.yellow + recipe.grey) / 2 then
+    return "medium"
+  end
+  return rank < recipe.grey and "easy" or "trivial"
+end
+
 -- An option is {price, casts, path, node}; a node is {buy = true, item_id} or {item_id, recipe, children}.
 function Calc.pareto(opts)
   local sorted = {}
@@ -364,10 +378,15 @@ function Calculator:rows(showAll)
           if price then
             listed = price.available
           end
+          local difficulty = recipe.difficulty
+          if not difficulty and recipe.unlearned then
+            difficulty = Calc.color(self.s.skills[recipe.category or ""] or 0, recipe)
+          end
           local row = {
             item_id = itemId, name = item.name, profession = recipe.category, skill = self:skill(itemId, recipe),
-            revenue = revenue, listed = listed, difficulty = recipe.difficulty, de_value = deValue,
+            revenue = revenue, listed = listed, difficulty = difficulty, de_value = deValue,
             exit = deValue > sale and "disenchant" or "sell", learned = not recipe.unlearned,
+            estimated = recipe.estimated and true or false, learned_from = recipe.source, pattern = recipe.pattern,
           }
           if #opts == 0 and showAll then
             -- A reagent with no AH or vendor price leaves the cost unknown.

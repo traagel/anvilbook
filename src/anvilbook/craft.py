@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from itertools import product
+from typing import Any
 
 from .disenchant import expected_value
 
@@ -69,6 +70,20 @@ class CraftRow:
     de_value: float = 0
     exit: str = 'sell'
     learned: bool = True
+    estimated: bool = False
+    learned_from: str | None = None
+    pattern: int | None = None
+
+
+def color(rank: int, recipe: dict) -> str | None:
+    """The skill-up color from Forever's thresholds; green starts halfway from yellow to grey."""
+    if 'yellow' not in recipe:
+        return None
+    if rank < recipe['yellow']:
+        return 'optimal'
+    if rank < (recipe['yellow'] + recipe['grey']) / 2:
+        return 'medium'
+    return 'easy' if rank < recipe['grey'] else 'trivial'
 
 
 def pareto(opts: list[Option]) -> list[Option]:
@@ -162,10 +177,15 @@ class Calculator:
                 if not opts and not show_all:
                     continue
                 listed = price['available'] if price else 0
-                common = dict(item_id=item_id, name=item['name'], profession=recipe.get('category'),
+                difficulty = recipe.get('difficulty')
+                if not difficulty and recipe.get('unlearned'):
+                    difficulty = color(self.s.skills.get(recipe.get('category') or '', 0), recipe)
+                common: dict[str, Any] = dict(item_id=item_id, name=item['name'], profession=recipe.get('category'),
                               skill=self.skill(item_id, recipe), revenue=revenue, listed=listed,
-                              difficulty=recipe.get('difficulty'), de_value=de_value,
-                              exit='disenchant' if de_value > sale else 'sell', learned=not recipe.get('unlearned'))
+                              difficulty=difficulty, de_value=de_value,
+                              exit='disenchant' if de_value > sale else 'sell', learned=not recipe.get('unlearned'),
+                              estimated=bool(recipe.get('estimated')), learned_from=recipe.get('source'),
+                              pattern=recipe.get('pattern'))
                 if not opts:
                     # A reagent with no AH or vendor price leaves the cost unknown.
                     out.append(CraftRow(cost=None, profit=None, casts=None, per_cast=None, per_hour=None,

@@ -63,7 +63,8 @@ function Codec.item(s)
   return item
 end
 
--- bridge.database_recipes: "profession|skill|min|max|id:count,id:count", one per recipe, joined by ";".
+-- bridge.database_recipes: "profession|skill|min|max|id:count,id:count|yellow|grey|source|pattern|estimated",
+-- one per recipe, joined by ";". The fields after the reagents may be empty.
 function Codec.recipes(s)
   local out = {}
   for _, packed in ipairs(Codec.split(s, ";")) do
@@ -75,8 +76,16 @@ function Codec.recipes(s)
         reagents[#reagents + 1] = {itemId = tonumber(id), amount = tonumber(amount)}
       end
     end
-    out[#out + 1] = {category = f[1], requiredSkill = tonumber(f[2]) or 0,
-                     amount = {tonumber(f[3]) or 1, tonumber(f[4]) or 1}, reagents = reagents}
+    local recipe = {category = f[1], requiredSkill = tonumber(f[2]) or 0,
+                    amount = {tonumber(f[3]) or 1, tonumber(f[4]) or 1}, reagents = reagents,
+                    yellow = tonumber(f[6] or ""), grey = tonumber(f[7] or ""), pattern = tonumber(f[9] or "")}
+    if f[8] and f[8] ~= "" then
+      recipe.source = f[8]
+    end
+    if f[10] and f[10] ~= "" then
+      recipe.estimated = f[10] == "1"
+    end
+    out[#out + 1] = recipe
   end
   return out
 end

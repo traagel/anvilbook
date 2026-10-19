@@ -1,7 +1,7 @@
 # PyInstaller build: `uv run pyinstaller anvilbook.spec`
 from PyInstaller.utils.hooks import collect_data_files
 
-datas = collect_data_files('anvilbook', includes=['static/*', 'addon/**/*'])
+datas = collect_data_files('anvilbook', includes=['static/*', 'addon/**/*', 'data/*'])
 
 a = Analysis(
     ['src/anvilbook/__main__.py'],

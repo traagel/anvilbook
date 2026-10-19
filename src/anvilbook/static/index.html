@@ -253,7 +253,8 @@ function renderTable(el, cols, rows, onRowClick) {
 const craftCols = [
   {key: 'name', label: 'Item'},
   {key: 'profession', label: 'Profession'},
-  {key: 'skill', label: 'Skill / skill-up', fmt: (v, r) => r.difficulty || v,
+  // An unlearned row shows the skill needed to learn it, and "≈" when that skill is an estimate.
+  {key: 'skill', label: 'Skill / skill-up', fmt: (v, r) => r.learned ? (r.difficulty || v) : (r.estimated ? '≈' : '') + v,
    cls: (v, r) => r.difficulty ? 'd-' + r.difficulty : ''},
   {key: 'cost', label: 'Cost', fmt: money},
   {key: 'revenue', label: 'Net sale', fmt: money},
@@ -265,6 +266,14 @@ const craftCols = [
   {key: 'per_hour', label: 'Per hour', fmt: money},
   {key: 'listed', label: 'Listed'},
 ];
+
+function learnText(r) {
+  if (r.learned) return '';
+  const how = r.learned_from === 'pattern' ? `from ${r.pattern_name || 'a pattern'}`
+    : r.learned_from === 'trainer' ? 'from a trainer'
+    : r.learned_from === 'start' ? 'with the profession' : 'it';
+  return `Learn ${how} at skill ${r.estimated ? 'about ' : ''}${r.skill}. `;
+}
 
 let crafts = [];
 let professionFilter = null;
@@ -289,10 +298,10 @@ function showCrafts() {
     d.className = 'detail';
     const td = d.insertCell();
     td.colSpan = craftCols.length;
-    td.textContent = r.cost == null
+    td.textContent = learnText(r) + (r.cost == null
       ? 'A reagent has no AH or vendor price in the latest scan, so the cost is unknown. '
       : `Best per cast: ${r.path}. Cheapest path: ${money(r.cheapest_profit)} profit in ` +
-        `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}. `;
+        `${r.cheapest_casts.toFixed(1)} casts, ${r.cheapest_path}. `);
     const go = document.createElement('button');
     go.textContent = 'Plan a batch';
     go.onclick = event => { event.stopPropagation(); planFor(r.item_id); };

@@ -13,7 +13,14 @@ end
 local COLUMNS = {
   {key = "name", label = "Item", width = 160, fmt = function(v, row) return v or ns.Items.name(row.item_id) end},
   {key = "profession", label = "Profession", width = 76},
-  {key = "skill", label = "Skill-up", width = 54, fmt = function(v, row) return row.difficulty or tostring(v) end,
+  -- An unlearned row shows the skill needed to learn it; "~" marks an estimate (the game font lacks "≈").
+  {key = "skill", label = "Skill-up", width = 54,
+   fmt = function(v, row)
+     if not row.learned then
+       return (row.estimated and "~" or "") .. tostring(v)
+     end
+     return row.difficulty or tostring(v)
+   end,
    color = function(_, row) return unpack(DIFFICULTY[row.difficulty or ""] or WHITE) end},
   {key = "cost", label = "Cost", width = 66, align = "RIGHT", fmt = money},
   {key = "revenue", label = "Net sale", width = 66, align = "RIGHT", fmt = money},
@@ -56,11 +63,22 @@ local function emptyText(m, rows)
   return "No recipes to show."
 end
 
+local function learn(row)
+  if row.learned then
+    return ""
+  end
+  local how = ({trainer = "from a trainer", start = "with the profession"})[row.learned_from or ""]
+  if row.learned_from == "pattern" then
+    how = "from " .. (row.pattern and ns.Items.name(row.pattern) or "a pattern")
+  end
+  return ("|cffffd100Learn|r %s at skill %s%d.   "):format(how or "it", row.estimated and "about " or "", row.skill)
+end
+
 local function describe(row)
   if row.cost == nil then
-    return "A reagent has no AH or vendor price in the data, so the cost is unknown."
+    return learn(row) .. "A reagent has no AH or vendor price in the data, so the cost is unknown."
   end
-  local text = ("|cffffd100Best path:|r %s\n|cffffd100Cheapest:|r %s, profit %s in %.1f casts"):format(
+  local text = learn(row) .. ("|cffffd100Best path:|r %s\n|cffffd100Cheapest:|r %s, profit %s in %.1f casts"):format(
     row.path, row.cheapest_path, W.money(row.cheapest_profit), row.cheapest_casts)
   if row.de_value and row.de_value > 0 then
     text = text .. ("   |cffffd100Disenchant:|r %s"):format(W.money(row.de_value))

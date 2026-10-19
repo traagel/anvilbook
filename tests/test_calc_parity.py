@@ -33,8 +33,11 @@ ITEMS = {
     2770: {'name': 'Copper Ore'},
     2771: {'name': 'Tin Ore'},
     3466: {'name': 'Strong Flux', 'vendorPrice': 2000},
-    2840: {'name': 'Copper Bar', 'createdBy': [recipe('Mining', 1, [(2770, 1)])]},
-    3576: {'name': 'Tin Bar', 'createdBy': [recipe('Mining', 65, [(2771, 1)])]},
+    # Forever-table fields: as unlearned rows at Mining 120, these read orange and green.
+    2840: {'name': 'Copper Bar', 'createdBy': [{**recipe('Mining', 1, [(2770, 1)]), 'yellow': 125, 'grey': 145,
+                                                'source': 'trainer', 'estimated': True}]},
+    3576: {'name': 'Tin Bar', 'createdBy': [{**recipe('Mining', 65, [(2771, 1)]), 'yellow': 100, 'grey': 140,
+                                             'source': 'pattern', 'pattern': 3577, 'estimated': False}]},
     2841: {'name': 'Bronze Bar', 'createdBy': [recipe('Mining', 65, [(2840, 1), (3576, 1)], (2, 2))]},
     2851: {'name': 'Copper Chain Belt', 'requiredLevel': 5, 'quality': 'Uncommon', 'itemLevel': 8,
            'class': 'Armor', 'createdBy': [recipe('Blacksmithing', 35, [(2840, 6)]),
@@ -183,5 +186,7 @@ def test_lua_calculator_matches_python(tmp_path, name):
         assert any(r['cost'] is None for r in expected['rows'])
     if c['lua_merge']:
         assert {r['learned'] for r in expected['rows']} == {True, False}
+        colors = {r['item_id']: r['difficulty'] for r in expected['rows'] if not r['learned']}
+        assert (colors[2840], colors[3576]) == ('optimal', 'easy')
     # Lua drops nil fields, so a None in Python reads back as a missing key.
     same(as_lists(without_none(expected)), lua_side(tmp_path, c), name)

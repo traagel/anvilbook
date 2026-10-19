@@ -9,7 +9,7 @@ from fastapi import Body, Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .. import __version__
+from .. import __version__, forever
 from ..items import load_items
 from .auth import check_password, check_username, hash_password, new_token, token_hash, verify_password
 from .crafts_api import add_crafts_route
@@ -81,7 +81,7 @@ def create_server(database: Database | None = None, data_dir: Path | None = None
         with items_lock:
             if 'items' not in cache:
                 items_dir.mkdir(parents=True, exist_ok=True)
-                cache['items'] = load_items(items_dir / 'items.json')
+                cache['items'] = forever.apply(load_items(items_dir / 'items.json'), forever.load())
             return cache['items']
 
     @app.get('/healthz')

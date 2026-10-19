@@ -113,11 +113,16 @@ def recipe_items(exports: list[GameExport]) -> dict[int, str | None]:
 def database_recipes(items: dict[int, dict], professions: set[str]) -> dict[int, str]:
     """The item database's recipes of these professions, for the game's Unlearned list.
     Codec.recipes reads the format."""
+    def pack(r: dict) -> str:
+        estimated = '' if 'estimated' not in r else '1' if r['estimated'] else '0'
+        return '|'.join([r['category'], str(int(r.get('requiredSkill') or 0)), str(r['amount'][0]), str(r['amount'][1]),
+                         ','.join(f"{x['itemId']}:{x['amount']}" for x in r['reagents']),
+                         _field(r.get('yellow')), _field(r.get('grey')), r.get('source') or '',
+                         _field(r.get('pattern')), estimated])
+
     out = {}
     for item_id, item in items.items():
-        packed = [f"{r['category']}|{int(r.get('requiredSkill') or 0)}|{r['amount'][0]}|{r['amount'][1]}|"
-                  + ','.join(f"{x['itemId']}:{x['amount']}" for x in r['reagents'])
-                  for r in item.get('createdBy') or [] if r.get('category') in professions]
+        packed = [pack(r) for r in item.get('createdBy') or [] if r.get('category') in professions]
         if packed:
             out[item_id] = ';'.join(packed)
     return out
@@ -135,6 +140,8 @@ def build(store, items: dict[int, dict], exports: list[GameExport], share_error:
     for item_id in database:
         for recipe in items[item_id].get('createdBy') or []:
             from_database.update(r['itemId'] for r in recipe['reagents'])
+            if recipe.get('pattern'):
+                from_database.add(recipe['pattern'])
 
     packed = {}
     for item_id in sorted(listed | from_game.keys() | from_database):

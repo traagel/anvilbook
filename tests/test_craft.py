@@ -104,6 +104,22 @@ def test_unlearned_recipes_are_rows_but_never_steps():
     assert 'Tin Bar=craft' not in row(rows, 2841).cheapest_path
 
 
+def test_unlearned_rows_take_their_color_from_the_thresholds():
+    def tin(yellow, grey):
+        return {**recipe('Mining', 65, [(2771, 1)]), 'unlearned': True, 'yellow': yellow, 'grey': grey,
+                'source': 'pattern', 'pattern': 3577, 'estimated': False}
+    colors = []
+    for yellow, grey in ((100, 140), (90, 110), (80, 105), (50, 90)):
+        items = {**ITEMS, 3576: {'name': 'Tin Bar', 'createdBy': [tin(yellow, grey)]}}
+        colors.append(row(Calculator(items, PRICES, {}, settings()).rows(show_all=True), 3576).difficulty)
+    # Mining 99: below yellow, before the midpoint, before grey, at grey or above.
+    assert colors == ['optimal', 'medium', 'easy', 'trivial']
+    items = {**ITEMS, 3576: {'name': 'Tin Bar', 'createdBy': [tin(100, 140)]}}
+    tin_row = row(Calculator(items, PRICES, {}, settings()).rows(show_all=True), 3576)
+    assert (tin_row.learned_from, tin_row.pattern, tin_row.estimated) == ('pattern', 3577, False)
+    assert row(Calculator(ITEMS, PRICES, {}, settings()).rows(), 2841).difficulty is None
+
+
 def test_vendor_price_beats_ah():
     items = {**ITEMS, 2771: {'name': 'Tin Ore', 'vendorPrice': 150}}
     price = lambda calc: [(p, c, path) for p, c, path, _ in calc.options(2771)]
