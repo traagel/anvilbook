@@ -19,7 +19,7 @@ Type `/anvilbook`, or click the minimap button.
 
 | Part | What it shows |
 |---|---|
-| Crafts | Each recipe you know, with the cheapest way to get every reagent, the profit, and the profit for each cast. Right-click a row to plan it. |
+| Crafts | Each recipe you know, with the cheapest way to get every reagent, the profit, and the profit for each cast. Right-click a row to plan it. Tick All to also see the recipes that lose money at today's prices. Unlearned shows the recipes your skill lets you learn now. |
 | Plan | "I have 3g 43s, what do I buy?" A batch size, a shopping list, the crafting steps, and the leftovers. |
 | Shopping panel | The plan's shopping list, beside the auction house. A row gets a tick when you have bought it. One button searches for the whole list in Auctionator. |
 | Tooltips | The listed count, the price change since the scan before, the craft profit, and the disenchant value. |

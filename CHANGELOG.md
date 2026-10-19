@@ -3,6 +3,27 @@
 Each version of anvilbook ships the app and the `AnvilbookExport` addon together. "In game" lists
 what changed in the addon, for the CurseForge file notes. "App" lists the rest.
 
+## [0.6.0] - 2026-10-19
+
+### In game
+
+- Crafts has an **All** tickbox. It also shows the recipes that lose money, the ones whose
+  item has no AH price, and the ones with few listings. One listing far below the usual price
+  can make a good recipe look like a loss, so you can now still see it. A loss shows in red.
+  When a reagent has no price at all, the cost stays empty.
+- **Learned** and **Unlearned** choose which recipes Crafts shows. Unlearned shows the recipes
+  that your skill lets you learn now, with the skill they need. These come from the app.
+- Tooltips show the craft profit also when it is a loss.
+- The minimap button sits on the edge of Forever's larger minimap. Drag it to change its
+  distance as well as its angle.
+
+### App
+
+- The Crafts page has the same All, Learned and Unlearned controls.
+- The app sends the item database's recipes for your recorded professions to the game, with
+  the skill overrides.
+- The public site still shows only the recipes that a character knows.
+
 ## [0.5.1] - 2026-10-06
 
 ### In game
@@ -106,6 +127,7 @@ what changed in the addon, for the CurseForge file notes. "App" lists the rest.
   disenchants.
 - Finds the game and installs the addon from the web page.
 
+[0.6.0]: https://github.com/traagel/anvilbook/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/traagel/anvilbook/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/traagel/anvilbook/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/traagel/anvilbook/compare/v0.3.0...v0.4.0

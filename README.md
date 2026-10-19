@@ -22,7 +22,9 @@ Everything runs on your own computer. Nothing is uploaded unless you turn on sha
 
 - **Crafts**: for each recipe, the cheapest way to get every reagent (buy it, or craft it
   from its own reagents), the profit, and the profit for each cast. Skill-up colors come
-  from the game.
+  from the game. Tick **All** to also see the recipes that lose money at today's prices,
+  because one cheap listing can make a good recipe look like a loss. **Unlearned** shows the
+  recipes that your skill lets you learn now.
 - **Plan**: "I have 3g 43s, what do I buy?" It answers with a batch size, a shopping list
   with quantities, the crafting steps, what comes from your bags, and the leftovers.
 - **History**: the lowest price and the listed count of any item over all your scans.
