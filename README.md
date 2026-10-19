@@ -187,6 +187,17 @@ addon's Lua calculator gives the same answers as the Python one, and `test_addon
 the in-game UI on a data file that the app wrote. The server tests need Postgres; see
 [docs/server.md](docs/server.md).
 
+The recipes come from `src/anvilbook/data/forever-recipes.json`, which is built from the game
+client's data tables. When Forever patches, read the new build number from the `Version` column
+of the game's `.build.info`, then rebuild the file and release:
+
+```bash
+uv run python -m anvilbook.forever 1.60.1.70450
+```
+
+It downloads nine tables from wago.tools. To use CSV files that you exported yourself, give
+their folder as a second argument.
+
 If the game's addon folder is a symlink to this repository, the app writes its data file into
 your working copy. Tell git to leave it alone:
 
@@ -200,7 +211,8 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
 
 ## Credits
 
-- Item and recipe data: [nexus-devs/wow-classic-items](https://github.com/nexus-devs/wow-classic-items) (MIT)
+- Recipes: the WoW Forever client's own data tables, through [wago.tools](https://wago.tools)
+- Item data: [nexus-devs/wow-classic-items](https://github.com/nexus-devs/wow-classic-items) (MIT)
 - Charts: [uPlot](https://github.com/leeoniya/uPlot) (MIT)
 - Prices: the [Auctionator](https://www.curseforge.com/wow/addons/auctionator) addon
 
