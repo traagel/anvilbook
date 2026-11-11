@@ -194,7 +194,7 @@ the new build number from the `Version` column of the game's `.build.info`, then
 files and release:
 
 ```bash
-uv run python -m anvilbook.forever 1.60.1.70450
+uv run python -m anvilbook.forever 1.60.1.70888
 ```
 
 It downloads nine tables from wago.tools. To use CSV files that you exported yourself, give
