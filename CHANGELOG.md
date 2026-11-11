@@ -3,6 +3,18 @@
 Each version of anvilbook ships the app and the `AnvilbookExport` addon together. "In game" lists
 what changed in the addon, for the CurseForge file notes. "App" lists the rest.
 
+## [0.8.1] - 2026-11-11
+
+### In game
+
+- The recipe list comes from the live game (build 1.60.1.70888), not the beta. 37 recipes now
+  show their exact learn skill instead of an estimate, and Prefect's Waistguard is learned from
+  a pattern, not a trainer.
+
+### App
+
+- The app uses the same recipe list.
+
 ## [0.8.0] - 2026-11-11
 
 ### In game
@@ -163,6 +175,7 @@ what changed in the addon, for the CurseForge file notes. "App" lists the rest.
   disenchants.
 - Finds the game and installs the addon from the web page.
 
+[0.8.1]: https://github.com/traagel/anvilbook/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/traagel/anvilbook/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/traagel/anvilbook/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/traagel/anvilbook/compare/v0.5.1...v0.6.0
