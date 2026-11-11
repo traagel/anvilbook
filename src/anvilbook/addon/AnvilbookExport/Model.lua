@@ -62,56 +62,38 @@ function ns.invalidate()
   end
 end
 
--- Decoded once: the data file stays the same until the next /reload.
-local function recipeDatabase(data)
+-- Above any profession's cap: the Any view ignores skill.
+local ANY_SKILL = 1000
+
+-- AnvilbookRecipes.lua, decoded once.
+function ns.recipeDatabase()
   if not database then
     database = {}
-    for itemId, packed in pairs(data and data.recipes or {}) do
+    for itemId, packed in pairs(AnvilbookRecipes and AnvilbookRecipes.recipes or {}) do
       database[itemId] = ns.Codec.recipes(packed)
     end
   end
   return database
 end
 
+-- The character whose recipes the window shows: the one picked there, else the one playing.
+-- The addon's saved data is account-wide, so it holds every character that opened a profession window.
+function ns.viewedKey()
+  local characters = AnvilbookExportDB and AnvilbookExportDB.characters or {}
+  local picked = ns.ui().view
+  if picked and characters[picked] then
+    return picked
+  end
+  return ns.characterKey()
+end
+
 function ns.character()
-  local key = ns.characterKey()
+  local key = ns.viewedKey()
   local characters = AnvilbookExportDB and AnvilbookExportDB.characters or {}
   return key, characters[key] or {professions = {}}
 end
 
-function ns.model()
-  if model then
-    return model
-  end
-  local data = ns.data()
-  local settings = ns.Sync.settings()
-  local key, char = ns.character()
-  local professions, skills, ids = {}, {}, {}
-  for name, profession in pairs(char.professions or {}) do
-    name = ns.Calc.ALIASES[name] or name
-    professions[name] = profession
-    skills[name] = tonumber(profession.rank) or 0
-    for itemId, recipe in pairs(profession.recipes or {}) do
-      ids[itemId] = true
-      for _, reagent in ipairs(recipe.reagents or {}) do
-        ids[reagent.id] = true
-      end
-    end
-  end
-  local db = recipeDatabase(data)
-  for itemId, recipes in pairs(db) do
-    for _, recipe in ipairs(recipes) do
-      if professions[recipe.category] then
-        ids[itemId] = true
-        for _, reagent in ipairs(recipe.reagents) do
-          ids[reagent.itemId] = true
-        end
-      end
-    end
-  end
-
-  local prices, live = ns.Prices.build(data, ids)
-  local vendor = ns.Prices.vendor(data, ids)
+local function itemTable(prices, ids)
   local items, missing = {}, {}
   local function add(id)
     if not items[id] then
@@ -130,27 +112,111 @@ function ns.model()
   for id in pairs(ids) do
     add(id)
   end
-  ns.Calc.merge(items, professions, db)
+  return items, missing
+end
 
-  local records = AnvilbookExportDB and AnvilbookExportDB.disenchants or {}
-  local calc = ns.Calc.new(items, prices, vendor, {
+local function calcSettings(m, skills)
+  local settings = m.settings
+  return {
     skills = skills, skill_overrides = settings.skill_overrides, max_use_level = settings.max_use_level,
     min_listed = settings.min_listed, cast_seconds = settings.cast_seconds, ah_cut = settings.ah_cut,
-    disenchanter = settings.assume_enchanter and true or skills.Enchanting ~= nil,
-    disenchant_table = ns.Calc.effectiveTable(settings.disenchant_table, records, settings.min_disenchant_samples),
-  })
-  model = {data = data, settings = settings, character = key, professions = professions, prices = prices,
-           live = live, calc = calc, records = records, missing = missing}
+    disenchanter = settings.assume_enchanter and true or m.skills.Enchanting ~= nil,
+    disenchant_table = ns.Calc.effectiveTable(settings.disenchant_table, m.records, settings.min_disenchant_samples),
+  }
+end
+
+function ns.model()
+  if model then
+    return model
+  end
+  local data = ns.data()
+  local settings = ns.Sync.settings()
+  local key, char = ns.character()
+  local professions, skills, ids, known = {}, {}, {}, {}
+  for name, profession in pairs(char.professions or {}) do
+    name = ns.Calc.ALIASES[name] or name
+    professions[name] = profession
+    skills[name] = tonumber(profession.rank) or 0
+    for itemId, recipe in pairs(profession.recipes or {}) do
+      ids[itemId] = true
+      known[name .. ":" .. itemId] = true
+      for _, reagent in ipairs(recipe.reagents or {}) do
+        ids[reagent.id] = true
+      end
+    end
+  end
+  local db = ns.recipeDatabase()
+  for itemId, recipes in pairs(db) do
+    for _, recipe in ipairs(recipes) do
+      if professions[recipe.category] then
+        ids[itemId] = true
+        for _, reagent in ipairs(recipe.reagents) do
+          ids[reagent.itemId] = true
+        end
+      end
+    end
+  end
+
+  local prices, live = ns.Prices.build(data, ids)
+  local vendor = ns.Prices.vendor(data, ids)
+  local items, missing = itemTable(prices, ids)
+  ns.Calc.merge(items, professions, db)
+
+  model = {data = data, settings = settings, character = key, professions = professions, skills = skills,
+           prices = prices, live = live, records = AnvilbookExportDB and AnvilbookExportDB.disenchants or {},
+           missing = missing, known = known}
+  model.calc = ns.Calc.new(items, prices, vendor, calcSettings(model, skills))
   return model
 end
 
--- The rows, and the learned rows by item id. showAll keeps losses too (Calculator:rows).
-function ns.rows(showAll)
+-- Every recipe of every profession, as if the character had them all at full skill, to show
+-- what is worth investing in. app.py's calculator(everything=True) does the same.
+function ns.anyModel()
   local m = ns.model()
-  local key = showAll and "all" or "profitable"
+  if not m.any then
+    local db, ids, skills = ns.recipeDatabase(), {}, {}
+    for itemId, recipes in pairs(db) do
+      ids[itemId] = true
+      for _, recipe in ipairs(recipes) do
+        skills[recipe.category] = ANY_SKILL
+        for _, reagent in ipairs(recipe.reagents) do
+          ids[reagent.itemId] = true
+        end
+      end
+    end
+    local prices = ns.Prices.build(m.data, ids)
+    local items = itemTable(prices, ids)
+    for itemId, recipes in pairs(db) do
+      items[itemId].createdBy = recipes
+    end
+    m.any = {calc = ns.Calc.new(items, prices, ns.Prices.vendor(m.data, ids), calcSettings(m, skills))}
+  end
+  return m.any
+end
+
+-- The calculator behind the Crafts view in use, for Plan.
+function ns.planCalc()
+  local crafts = ns.ui().crafts
+  return (crafts and crafts.view == "any") and ns.anyModel().calc or ns.model().calc
+end
+
+-- The rows, and the learned rows by item id. showAll keeps losses too (Calculator:rows).
+-- view "any" prices every recipe; its rows say whether this character knows them.
+function ns.rows(showAll, view)
+  local m = ns.model()
+  local key = (view == "any" and "any " or "") .. (showAll and "all" or "profitable")
   m.rows = m.rows or {}
   if not m.rows[key] then
-    local rows, byId = m.calc:rows(showAll), {}
+    local rows, byId
+    if view == "any" then
+      rows = ns.anyModel().calc:rows(showAll)
+      for _, row in ipairs(rows) do
+        row.learned = m.known[row.profession .. ":" .. row.item_id] == true
+      end
+    else
+      rows = m.calc:rows(showAll)
+    end
+    byId = {}
     for _, row in ipairs(rows) do
       if row.learned and not byId[row.item_id] then
         byId[row.item_id] = row

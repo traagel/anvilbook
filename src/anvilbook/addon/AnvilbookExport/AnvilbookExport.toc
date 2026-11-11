@@ -5,6 +5,7 @@
 ## SavedVariables: AnvilbookExportDB
 
 AnvilbookData.lua
+AnvilbookRecipes.lua
 AnvilbookExport.lua
 Codec.lua
 Calc.lua

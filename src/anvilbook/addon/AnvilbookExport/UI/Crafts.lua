@@ -38,21 +38,34 @@ local COLUMNS = {
 local profession -- nil shows every profession
 
 -- all: also crafts that lose money; learned: the recipes the character knows, else the ones it can learn.
+local VIEWS = {"learned", "unlearned", "any"}
+
 local function shown()
   local ui = ns.ui()
-  ui.crafts = ui.crafts or {all = false, learned = true}
+  ui.crafts = ui.crafts or {all = false}
+  -- Before Any, 0.6.0 saved the choice as learned = true or false.
+  if not ui.crafts.view then
+    ui.crafts.view = ui.crafts.learned == false and "unlearned" or "learned"
+  end
   return ui.crafts
+end
+
+local function keeps(view, row)
+  if view == "any" then
+    return true
+  end
+  return row.learned == (view == "learned")
 end
 
 local function emptyText(m, rows)
   if #rows > 0 then
     return ""
   end
-  if next(m.professions) == nil then
+  if next(m.professions) == nil and shown().view ~= "any" then
     return "No recipes recorded for this character. Open each profession window for a few seconds."
   end
-  if not shown().learned and not (m.data and m.data.recipes) then
-    return "Unlearned recipes come from the app's item database. Run the anvilbook app, then /reload."
+  if shown().view ~= "learned" and next(ns.recipeDatabase()) == nil then
+    return "This copy of the addon has no recipe list. Install it again."
   end
   if next(m.prices) == nil then
     return "No prices yet. Scan the auction house with Auctionator, or run the anvilbook app and /reload."
@@ -99,21 +112,41 @@ ns.addTab({
       ns.refresh()
     end)
     panel.all:SetPoint("TOPLEFT", 150, 0)
-    -- Two boxes for one choice: a click on the ticked one keeps it ticked.
-    panel.learned = W.check(panel, "Learned", function()
-      shown().learned = true
-      ns.refresh()
-    end)
-    panel.learned:SetPoint("TOPLEFT", 220, 0)
-    panel.unlearned = W.check(panel, "Unlearned", function()
-      shown().learned = false
-      ns.refresh()
-    end)
-    panel.unlearned:SetPoint("TOPLEFT", 310, 0)
-    panel.filter = W.button(panel, "All professions", 150, function(self)
-      local names = {}
-      for name in pairs(ns.model().professions) do
+    -- Three boxes for one choice: a click on the ticked one keeps it ticked.
+    panel.views = {}
+    local labels = {learned = "Learned", unlearned = "Unlearned", any = "Any"}
+    for i, view in ipairs(VIEWS) do
+      local box = W.check(panel, labels[view], function()
+        shown().view = view
+        ns.refresh()
+      end)
+      box:SetPoint("TOPLEFT", 210 + (i - 1) * 90, 0)
+      panel.views[view] = box
+    end
+    -- The saved data is account-wide, so every character that opened a profession window is there.
+    panel.who = W.button(panel, "", 130, function(self)
+      local playing, names = ns.characterKey(), {}
+      for name in pairs(AnvilbookExportDB and AnvilbookExportDB.characters or {}) do
         names[#names + 1] = name
+      end
+      table.sort(names)
+      local entries = {}
+      for _, name in ipairs(names) do
+        entries[#entries + 1] = {text = name == playing and (name .. " (you)") or name, value = name}
+      end
+      W.popup(self, entries, function(value)
+        ns.ui().view = value ~= playing and value or nil
+        ns.invalidate()
+      end)
+    end)
+    panel.who:SetPoint("TOPRIGHT", -134, 0)
+    panel.filter = W.button(panel, "All professions", 130, function(self)
+      local names, seen = {}, {}
+      for _, row in ipairs((ns.rows(shown().all, shown().view))) do
+        if row.profession and not seen[row.profession] then
+          seen[row.profession] = true
+          names[#names + 1] = row.profession
+        end
       end
       table.sort(names)
       local entries = {{text = "All professions"}}
@@ -152,11 +185,13 @@ ns.addTab({
     panel.filter:SetText(profession or "All professions")
     local choice = shown()
     panel.all:SetChecked(choice.all)
-    panel.learned:SetChecked(choice.learned)
-    panel.unlearned:SetChecked(not choice.learned)
+    for view, box in pairs(panel.views) do
+      box:SetChecked(view == choice.view)
+    end
+    panel.who:SetText((m.character:match("^(.-) %- ") or m.character))
     local rows = {}
-    for _, row in ipairs((ns.rows(choice.all))) do
-      if row.learned == choice.learned and (not profession or row.profession == profession) then
+    for _, row in ipairs((ns.rows(choice.all, choice.view))) do
+      if keeps(choice.view, row) and (not profession or row.profession == profession) then
         rows[#rows + 1] = row
       end
     end

@@ -127,6 +127,7 @@ input[type=text] { width:100%; max-width:40rem; }
     <label title="Also crafts that lose money, have no AH price, or have few listings"><input type="checkbox" id="crafts-all"> All</label>
     <label><input type="radio" name="learned" value="learned" checked> Learned</label>
     <label title="Recipes your skill lets you learn now"><input type="radio" name="learned" value="unlearned"> Unlearned</label>
+    <label title="Every recipe of every profession, to see what is worth investing in"><input type="radio" name="learned" value="any"> Any</label>
   </div>
 </header>
 <main>
@@ -278,10 +279,11 @@ function learnText(r) {
 let crafts = [];
 let professionFilter = null;
 let showAll = false;
-let showLearned = true;
+let view = 'learned';
+const inView = r => view === 'any' || r.learned === (view === 'learned');
 
 function showCrafts() {
-  const rows = crafts.filter(r => r.learned === showLearned
+  const rows = crafts.filter(r => inView(r)
                                   && (!professionFilter || r.profession === professionFilter));
   const empty = $('#empty');
   empty.hidden = rows.length > 0;
@@ -310,7 +312,7 @@ function showCrafts() {
 }
 
 async function loadCrafts() {
-  crafts = await api('/api/crafts' + (showAll ? '?all=true' : ''));
+  crafts = await api(`/api/crafts?all=${showAll}&view=${view === 'any' ? 'any' : 'learned'}`);
   showCrafts();
   showProfessions();
   showPlanItems();
@@ -336,7 +338,8 @@ async function loadPlan() {
   if (!itemId) return;
   const budget = parseGold($('#plan-budget').value);
   const out = $('#plan-result');
-  const p = await api(`/api/plan?item_id=${itemId}&budget=${budget}&use_bags=${$('#plan-bags').checked}`);
+  const p = await api(`/api/plan?item_id=${itemId}&budget=${budget}&use_bags=${$('#plan-bags').checked}` +
+                      `&view=${view === 'any' ? 'any' : 'learned'}`);
   out.innerHTML = '';
   const head = document.createElement('p');
   head.className = 'verdict';
@@ -468,7 +471,10 @@ $('#crafts-all').onchange = e => {
 };
 for (const radio of document.querySelectorAll('input[name="learned"]')) {
   radio.onchange = () => {
-    showLearned = radio.value === 'learned';
+    // Any prices every profession, so it needs other rows from the app; the other two filter.
+    const reload = (view === 'any') !== (radio.value === 'any');
+    view = radio.value;
+    if (reload) return loadCrafts();
     showProfessions();
     showCrafts();
   };
@@ -593,7 +599,7 @@ function showProfessions() {
   const current = characters.find(c => c.character === active);
   if (!current) return;
   for (const [name, rank] of Object.entries(current.professions)) {
-    const count = crafts.filter(r => r.profession === name && r.learned === showLearned).length;
+    const count = crafts.filter(r => r.profession === name && inView(r)).length;
     const b = document.createElement('button');
     b.setAttribute('aria-pressed', String(professionFilter === name));
     b.disabled = count === 0;

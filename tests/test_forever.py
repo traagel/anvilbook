@@ -107,6 +107,15 @@ def test_apply_puts_forever_recipes_in_place_of_classic_ones():
     assert forever.apply(classic, None) is classic
 
 
+def test_the_addon_carries_the_same_table():
+    lua = forever.ADDON_TABLE.read_bytes()
+    addon = forever.bridge.parse_savedvariables(lua)['AnvilbookRecipes']
+    table = forever.read(forever.TABLE_PATH)
+    assert addon['build'] == table['build']
+    assert set(addon['recipes']) == {r['item'] for r in table['recipes']}
+    assert addon['recipes'][279948] == 'Mining|140|1|1|2838:2,2772:1,2842:1|140|145|pattern|273097|0'
+
+
 def test_the_shipped_table_is_forever():
     table = forever.read(forever.TABLE_PATH)
     assert table is not None and table['build'].startswith('1.60.')

@@ -30,6 +30,7 @@ function Items.details(id)
   end
   local data = ns.data()
   local packed = data and data.items and data.items[id]
+    or AnvilbookRecipes and AnvilbookRecipes.items and AnvilbookRecipes.items[id]
   if not packed then
     return fromGame(id)
   end

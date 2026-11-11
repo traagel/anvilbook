@@ -228,30 +228,53 @@ check(#texts("Deadly Bronze Poniard") > 0, "the crafts table shows the poniard")
 if dataFile then
   check(#texts("Prices: app scan") > 0, "the status line names the app scan")
 else
-  check(#texts("live from Auctionator for 5 items") > 0, "the status line counts the live prices")
+  check(#texts("live from Auctionator for 6 items") > 0, "the status line counts the live prices")
   check(rows[1].listed == nil, "a live-only price has no listed count")
 end
 
-local all, unlearned = checkbox("All"), checkbox("Unlearned")
-check(all and unlearned and checkbox("Learned").checked, "Crafts has the All, Learned and Unlearned boxes")
+local all, unlearned, any = checkbox("All"), checkbox("Unlearned"), checkbox("Any")
+check(all and unlearned and any and checkbox("Learned").checked, "Crafts has All, and Learned, Unlearned and Any")
 all:SetChecked(true)
 click(all)
 check(AnvilbookExportDB.ui.crafts.all == true and #ns.rows(true) >= #ns.rows(), "All keeps every recipe")
 click(unlearned)
-check(AnvilbookExportDB.ui.crafts.learned == false and checkbox("Learned").checked == false, "one choice at a time")
-if dataFile then
-  local tin
-  for _, row in ipairs(ns.rows(true)) do
-    if row.item_id == 3576 then tin = row end
-  end
-  check(tin and tin.learned == false and tin.skill == 65, "Tin Bar is unlearned, with its required skill")
-  check(#texts("Tin Bar") > 0, "the Unlearned list shows Tin Bar")
-else
-  check(#texts("Unlearned recipes come from the app's item database") > 0, "Unlearned needs the app")
+check(AnvilbookExportDB.ui.crafts.view == "unlearned" and checkbox("Learned").checked == false, "one choice at a time")
+-- The addon's own recipe list works with or without the app.
+local tin
+for _, row in ipairs(ns.rows(true)) do
+  if row.item_id == 3576 then tin = row end
 end
+check(tin and tin.learned == false and tin.skill == 65, "Tin Bar is unlearned, with its required skill")
+check(#texts("Tin Bar") > 0, "the Unlearned list shows Tin Bar")
+click(any)
+local professions, copper = {}, nil
+for _, row in ipairs(ns.rows(true, "any")) do
+  professions[row.profession] = true
+  if row.item_id == 2840 then copper = row end
+end
+check(professions.Tailoring and professions.Alchemy, "Any shows professions this character does not have")
+check(copper and copper.learned, "Any marks the recipes this character knows")
 click(checkbox("Learned"))
 all:SetChecked(false)
 click(all)
+
+local picker
+for _, o in ipairs(created) do
+  if o.kind == "Button" and o._text == "Thordak" then picker = o end
+end
+check(picker, "the character picker names the character playing")
+click(picker)
+local alt
+for _, o in ipairs(created) do
+  if o.kind == "Button" and o.value == "Alt - Classic Beta PvP" and o.shown then alt = o end
+end
+click(alt)
+runTimers()
+check(ns.model().character == "Alt - Classic Beta PvP" and #texts("No recipes recorded for this character") > 0,
+      "picking an alt shows the alt's recipes")
+AnvilbookExportDB.ui.view = nil
+ns.invalidate()
+runTimers()
 
 ns.openPlan(3490)
 check(#texts("Make ") > 0, "the plan describes the batch")

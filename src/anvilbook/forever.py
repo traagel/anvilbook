@@ -9,12 +9,18 @@ a folder of the same CSV files) and writes TABLE_PATH, which a release ships.
 import csv
 import io
 import json
+import os
 import sys
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
+from . import bridge
+from .items import load_items
+
 TABLE_PATH = Path(__file__).parent / 'data' / 'forever-recipes.json'
+# The addon's own copy, so Unlearned and Any work without the app.
+ADDON_TABLE = Path(__file__).parent / 'addon' / 'AnvilbookExport' / 'AnvilbookRecipes.lua'
 WAGO = 'https://wago.tools/db2/{table}/csv?build={build}'
 TABLES = ('SkillLine', 'SkillLineAbility', 'TradeSkillCategory', 'SpellEffect', 'SpellReagents', 'ItemEffect',
           'ItemXItemEffect', 'ItemSparse', 'Item')
@@ -160,6 +166,14 @@ def read_folder(folder: Path) -> dict[str, list[dict]]:
     return {name: list(csv.DictReader((folder / f'{name}.csv').open(encoding='utf-8'))) for name in TABLES}
 
 
+def write_addon(table: dict, items_json: Path) -> None:
+    """AnvilbookRecipes.lua, with the learn skills that apply() estimates from the classic data."""
+    items = apply(load_items(items_json), table)
+    lua = bridge.to_lua({'build': table['build'], **bridge.addon_recipes(items)})
+    ADDON_TABLE.write_text('-- Written by `python -m anvilbook.forever`; edits here are lost.\n'
+                           f'AnvilbookRecipes = {lua}\n', encoding='utf-8')
+
+
 def main(argv: list[str]) -> None:
     if not argv:
         sys.exit('usage: python -m anvilbook.forever BUILD [CSV_FOLDER]')
@@ -167,6 +181,8 @@ def main(argv: list[str]) -> None:
     table = build(tables, argv[0])
     TABLE_PATH.parent.mkdir(exist_ok=True)
     TABLE_PATH.write_text(dumps(table), encoding='utf-8')
+    data = Path(os.environ.get('ANVILBOOK_DATA') or Path.home() / '.local/share/anvilbook')
+    write_addon(table, data / 'items.json')
     counts = defaultdict(int)
     for r in table['recipes']:
         counts[r['profession']] += 1

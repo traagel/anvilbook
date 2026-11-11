@@ -54,7 +54,7 @@ local function describe(plan)
 end
 
 local function craftable()
-  local calc = ns.model().calc
+  local calc = ns.planCalc()
   local entries = {}
   for id, item in pairs(calc.items) do
     for _, recipe in ipairs(item.createdBy or {}) do
@@ -81,7 +81,7 @@ local function run(panel)
     return
   end
   local bags = ns.readBags() or {}
-  local plan = ns.Calc.forBudget(ns.model().calc, selected, budget, panel.bags:GetChecked() and bags or {})
+  local plan = ns.Calc.forBudget(ns.planCalc(), selected, budget, panel.bags:GetChecked() and bags or {})
   plan.name = ns.Items.name(selected)
   local purchases = {}
   for i, p in ipairs(plan.purchases) do

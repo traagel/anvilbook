@@ -128,6 +128,24 @@ def database_recipes(items: dict[int, dict], professions: set[str]) -> dict[int,
     return out
 
 
+def pack_item(item: dict, name: str = '') -> str:
+    """Codec.item reads the format; the name goes last because it may hold a "|"."""
+    return '|'.join(_field(item.get(k)) for k in (
+        'quality', 'itemLevel', 'requiredLevel', 'class', 'sellPrice', 'vendorPrice')) + '|' + (item.get('name') or name)
+
+
+def addon_recipes(items: dict[int, dict]) -> dict:
+    """Every recipe, with its items, for AnvilbookRecipes.lua: the addon's own recipe list."""
+    recipes = database_recipes(items, {r['category'] for item in items.values() for r in item.get('createdBy') or []})
+    used = set(recipes)
+    for item_id in recipes:
+        for recipe in items[item_id]['createdBy']:
+            used.update(r['itemId'] for r in recipe['reagents'])
+            if recipe.get('pattern'):
+                used.add(recipe['pattern'])
+    return {'recipes': recipes, 'items': {i: pack_item(items[i]) for i in sorted(used) if i in items}}
+
+
 def build(store, items: dict[int, dict], exports: list[GameExport], share_error: str | None) -> dict:
     settings = store.settings()
     scans = store.scans()[-HISTORY_SCANS:]
@@ -135,20 +153,7 @@ def build(store, items: dict[int, dict], exports: list[GameExport], share_error:
     latest = per_scan[-1] if per_scan else {}
     listed = set().union(*per_scan) if per_scan else set()
     from_game = recipe_items(exports)
-    database = database_recipes(items, {p for e in exports for p in e.professions})
-    from_database = set(database)
-    for item_id in database:
-        for recipe in items[item_id].get('createdBy') or []:
-            from_database.update(r['itemId'] for r in recipe['reagents'])
-            if recipe.get('pattern'):
-                from_database.add(recipe['pattern'])
-
-    packed = {}
-    for item_id in sorted(listed | from_game.keys() | from_database):
-        item = items.get(item_id) or {}
-        name = item.get('name') or from_game.get(item_id) or ''
-        packed[item_id] = '|'.join(_field(item.get(k)) for k in (
-            'quality', 'itemLevel', 'requiredLevel', 'class', 'sellPrice', 'vendorPrice')) + '|' + name
+    packed = {i: pack_item(items.get(i) or {}, from_game.get(i) or '') for i in sorted(listed | from_game.keys())}
 
     history = {}
     for item_id in sorted(listed):
@@ -166,7 +171,6 @@ def build(store, items: dict[int, dict], exports: list[GameExport], share_error:
                            for i, p in sorted(latest.items())),
         'vendor': ';'.join(f'{i}:{p}' for i, p in sorted(store.vendor_prices().items())),
         'history': history,
-        'recipes': database,
         'settings': {**{k: settings[k] for k in CALC_KEYS},
                      # JSON keeps the item ids as text; the game looks them up as numbers.
                      'skill_overrides': {int(k): int(v) for k, v in settings['skill_overrides'].items()},

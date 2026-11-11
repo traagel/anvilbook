@@ -32,6 +32,8 @@ from .watcher import Importer
 log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / 'static'
 POLL_SECONDS = 5
+# Above any profession's cap: the Any view ignores skill.
+ANY_SKILL = 1000
 
 
 def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
@@ -184,7 +186,9 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         return [{'character': e.character, 'updated': e.updated, 'professions': export_skills(e),
                  'maxRanks': {p: int(d.get('maxRank') or 0) for p, d in e.professions.items()}} for e in found]
 
-    def calculator() -> tuple[Calculator | None, GameExport | None]:
+    def calculator(everything: bool = False) -> tuple[Calculator | None, GameExport | None]:
+        """everything: every recipe of every profession, as if the character had them all at full
+        skill, to show what is worth investing in."""
         scan_id = store.latest_scan_id()
         exp = game_export()
         if scan_id is None:
@@ -193,25 +197,33 @@ def create_app(data_dir: Path | None = None, watch: bool = True) -> FastAPI:
         settings = CraftSettings.from_dict(stored)
         known = items()
         if exp:
-            known = merge(known, exp)
             # The character can only craft what the game reported for them.
             settings.skills = export_skills(exp)
+            if not everything:
+                known = merge(known, exp)
         settings.disenchanter = bool(stored['assume_enchanter']) or 'Enchanting' in settings.skills
+        if everything:
+            settings.skills = {r['category']: ANY_SKILL for item in known.values() for r in item.get('createdBy') or []}
         settings.disenchant_table = effective_table(settings.disenchant_table, disenchant_records(),
                                                     int(stored['min_disenchant_samples']))
         return Calculator(known, store.prices(scan_id), store.vendor_prices(), settings), exp
 
     @app.get('/api/crafts')
-    def crafts(show_all: bool = Query(False, alias='all')):
-        calc, _ = calculator()
+    def crafts(show_all: bool = Query(False, alias='all'), view: str = 'learned'):
+        calc, exp = calculator(view == 'any')
         if not calc:
             return []
+        rows = calc.rows(show_all)
+        if view == 'any' and exp:
+            recorded = {(p, int(i)) for p, data in exp.professions.items() for i in data.get('recipes') or {}}
+            for r in rows:
+                r.learned = (r.profession, r.item_id) in recorded
         name = lambda item_id: (calc.items.get(item_id) or {}).get('name') if item_id else None
-        return [{**asdict(r), 'pattern_name': name(r.pattern)} for r in calc.rows(show_all)]
+        return [{**asdict(r), 'pattern_name': name(r.pattern)} for r in rows]
 
     @app.get('/api/plan')
-    def plan(item_id: int, budget: int, count: int | None = None, use_bags: bool = True):
-        calc, exp = calculator()
+    def plan(item_id: int, budget: int, count: int | None = None, use_bags: bool = True, view: str = 'learned'):
+        calc, exp = calculator(view == 'any')
         if calc is None:
             raise HTTPException(409, 'No price scan yet')
         owned = dict(exp.bags) if exp and use_bags else {}

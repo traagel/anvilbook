@@ -231,6 +231,19 @@ def test_character_can_be_selected(env, tmp_path):
     assert len(everything) >= len(crafts) and all(r['skill'] <= 40 for r in everything)
 
 
+def test_the_any_view_prices_every_profession(env, tmp_path):
+    client, _ = env
+    (tmp_path / 'AnvilbookExport.lua').write_bytes(SECOND_CHARACTER)
+    client.post('/api/import')
+    rows = {r['item_id']: r for r in client.get('/api/crafts', params={'view': 'any'}).json()}
+    # Thordak has no Blacksmithing, but Any shows what it would earn.
+    assert (rows[3490]['profession'], rows[3490]['learned']) == ('Blacksmithing', False)
+    assert rows[2840]['learned'] is True
+    assert 3490 not in {r['item_id'] for r in client.get('/api/crafts').json()}
+    plan = client.get('/api/plan', params={'item_id': 3490, 'budget': 10 ** 6, 'view': 'any'}).json()
+    assert plan['count'] > 0 and any(s['item_id'] == 3490 for s in plan['steps'])
+
+
 def test_disenchant_needs_enchanting_or_the_assume_switch(env):
     client, _ = env
     client.post('/api/import')
