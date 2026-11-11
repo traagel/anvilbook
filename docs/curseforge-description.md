@@ -19,7 +19,7 @@ Type `/anvilbook`, or click the minimap button.
 
 | Part | What it shows |
 |---|---|
-| Crafts | Each recipe you know, with the cheapest way to get every reagent, the profit, and the profit for each cast. Right-click a row to plan it. Tick All to also see the recipes that lose money at today's prices. Unlearned shows the recipes your skill lets you learn now. |
+| Crafts | Each recipe you know, with the cheapest way to get every reagent, the profit, and the profit for each cast. Right-click a row to plan it. Tick All to also see the recipes that lose money at today's prices. Unlearned shows the recipes your skill lets you learn now, and Any shows every recipe of every profession. Pick an alt from the character list to see its crafts. |
 | Plan | "I have 3g 43s, what do I buy?" A batch size, a shopping list, the crafting steps, and the leftovers. |
 | Shopping panel | The plan's shopping list, beside the auction house. A row gets a tick when you have bought it. One button searches for the whole list in Auctionator. |
 | Tooltips | The listed count, the price change since the scan before, the craft profit, and the disenchant value. |
@@ -48,7 +48,8 @@ Esc > Options > AddOns > Anvilbook turns each part on or off.
 
 The Crafts, Plan, shopping panel and tooltip parts use Auctionator's prices from your scans in
 this session. Auctionator on Forever forgets its prices at each load, so scan again after a
-`/reload` or login.
+`/reload` or login. The addon carries Forever's full recipe list, so Unlearned and Any work
+without the app too.
 
 ## With the app
 

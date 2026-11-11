@@ -24,7 +24,8 @@ Everything runs on your own computer. Nothing is uploaded unless you turn on sha
   from its own reagents), the profit, and the profit for each cast. Skill-up colors come
   from the game. Tick **All** to also see the recipes that lose money at today's prices,
   because one cheap listing can make a good recipe look like a loss. **Unlearned** shows the
-  recipes that your skill lets you learn now.
+  recipes that your skill lets you learn now, and **Any** shows every recipe of every
+  profession, to see what is worth investing in.
 - **Plan**: "I have 3g 43s, what do I buy?" It answers with a batch size, a shopping list
   with quantities, the crafting steps, what comes from your bags, and the leftovers.
 - **History**: the lowest price and the listed count of any item over all your scans.
@@ -188,8 +189,9 @@ the in-game UI on a data file that the app wrote. The server tests need Postgres
 [docs/server.md](docs/server.md).
 
 The recipes come from `src/anvilbook/data/forever-recipes.json`, which is built from the game
-client's data tables. When Forever patches, read the new build number from the `Version` column
-of the game's `.build.info`, then rebuild the file and release:
+client's data tables, and the addon's copy, `AnvilbookRecipes.lua`. When Forever patches, read
+the new build number from the `Version` column of the game's `.build.info`, then rebuild both
+files and release:
 
 ```bash
 uv run python -m anvilbook.forever 1.60.1.70450

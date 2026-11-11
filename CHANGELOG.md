@@ -3,6 +3,24 @@
 Each version of anvilbook ships the app and the `AnvilbookExport` addon together. "In game" lists
 what changed in the addon, for the CurseForge file notes. "App" lists the rest.
 
+## [0.8.0] - 2026-11-11
+
+### In game
+
+- **Alts:** the Crafts tab has a character list. Pick any character on your account that has
+  opened its profession windows, and see its crafts. Plan still uses the bags of the character
+  you play.
+- **Any:** a third choice beside Learned and Unlearned. It prices every recipe of every
+  profession, as if you had them all, so you can see what is worth investing in. The recipes
+  that the character knows are marked as learned.
+- The addon carries Forever's recipe list itself, so Unlearned and Any work without the app.
+- After you update the addon, restart the game: this version adds a file.
+
+### App
+
+- The Crafts page has the Any choice too.
+- The app no longer sends recipes in the addon's data file, because the addon has its own.
+
 ## [0.7.0] - 2026-10-19
 
 ### In game
@@ -145,6 +163,7 @@ what changed in the addon, for the CurseForge file notes. "App" lists the rest.
   disenchants.
 - Finds the game and installs the addon from the web page.
 
+[0.8.0]: https://github.com/traagel/anvilbook/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/traagel/anvilbook/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/traagel/anvilbook/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/traagel/anvilbook/compare/v0.5.0...v0.5.1
